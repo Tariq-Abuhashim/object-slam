@@ -1,0 +1,4 @@
+#!/bin/bash
+gnome-terminal -- bash -c "cd ~/ws/covins_dsp/src/covins-dsdf/orb_slam3;./mono_snark Vocabulary/ORBvoc.bin ~/data/kitti/2011_09_30/KITTI.yaml ~/data/kitti/2011_09_30/;exec bash"
+gnome-terminal -- bash -c "export format=t,3ui,s[15197952];cd ~/data/mission_systems/2023_06_29_photo_shoot;cat cameras/alvium_1800_forward/20230629T043419.333403.bin | csv-play --binary $format --slow 1 | io-publish tcp:4001 --size $( echo $format | csv-format size );exec bash"
+gnome-terminal -- bash -c "export format=$( ouster-to-csv lidar --output-format );cd ~/data/mission_systems/2023_06_29_photo_shoot;cat ouster/lidar/20230629T043417.457335.bin | ouster-to-csv lidar --config configs/config.json:ouster | csv-play --binary $format --slow 1 | io-publish tcp:4000 --size $( echo $format | csv-format size );exec bash"

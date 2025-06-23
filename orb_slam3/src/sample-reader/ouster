@@ -1,0 +1,93 @@
+Ouster LiDAR sensors support various operating modes which are essentially different configurations of resolution and range. As of my knowledge cutoff in September 2021, Ouster's OS series of LiDAR sensors have the following operating modes:
+
+    Near Field (1024x10): In this mode, the sensor operates at a 1024 x 10 resolution with a 45 meter range, making it suitable for environments requiring high resolution at shorter ranges.
+
+    Standard (512x10): This is the default operating mode for most applications, providing a balance between resolution and range. In this mode, the sensor operates at a 512 x 10 resolution with a 120 meter range.
+
+    Mid Range (512x20): This mode doubles the vertical resolution compared to the standard mode, operating at a 512 x 20 resolution with an 85 meter range. This can be useful for environments requiring more vertical detail.
+
+    Far Field (1024x20): This mode provides the highest resolution and range, operating at a 1024 x 20 resolution with a 120 meter range. This mode may be useful in environments requiring high detail over a long range, but it also consumes the most power and produces the most data.
+
+    Single Return (2048x10): In this mode, the sensor operates at a 2048 x 10 resolution with a 45 meter range. It only reports the first return for each pulse, which may be useful in certain environments.
+
+Each mode is designed for specific use cases, with a trade-off between resolution, range, power consumption, and data output.
+
+The specific details and available modes may have changed if you are viewing this response after September 2021. You should refer to the latest Ouster documentation or contact Ouster support for the most accurate and up-to-date information.
+
+
+
+/* packet.h defines measurement_block_t, data_block_t, and imu_block_t
+				 		data_block_t:
+							comma::packed::little_endian::uint32 range;
+							comma::packed::little_endian::uint16 reflectivity;
+							comma::packed::little_endian::uint16 signal;
+							comma::packed::little_endian::uint16 noise;
+							comma::packed::little_endian::uint16 unused;
+						imu_block_t:
+    						comma::packed::little_endian::uint64 start_read_time;
+    						comma::packed::little_endian::uint64 acceleration_read_time;
+    						comma::packed::little_endian::uint64 gyro_read_time;
+    						comma::packed::little_endian::float32 acceleration_x;
+    						comma::packed::little_endian::float32 acceleration_y;
+    						comma::packed::little_endian::float32 acceleration_z;
+    						comma::packed::little_endian::float32 angular_acceleration_x;
+    						comma::packed::little_endian::float32 angular_acceleration_y;
+    						comma::packed::little_endian::float32 angular_acceleration_z;
+						v2::measurement_block_t
+							comma::packed::little_endian::uint64 timestamp;
+    						comma::packed::little_endian::uint16 measurement_id;
+    						comma::packed::little_endian::uint16 frame_id;
+    						comma::packed::little_endian::uint32 encoder_count;
+    						std::array< data_block_t, Beams > data_blocks;
+    						comma::packed::little_endian::uint32 packet_status;
+    						static const std::size_t num_beams = Beams;
+						output_lidar_t
+							output_azimuth_block_t azimuth_block;
+								boost::posix_time::ptime t;
+								comma::uint16 measurement_id;
+								comma::uint16 frame_id;
+								comma::uint32 encoder_count;
+								comma::uint32 block_id;
+    						output_data_block_t data_block;
+								comma::uint16 channel;
+								double range;
+								double bearing;
+								double elevation;
+								comma::uint16 signal;
+								comma::uint16 reflectivity;
+								comma::uint16 ambient;
+								double x;
+								double y;
+								double z;
+				*/
+
+
+//std::cout << "getting " << sizeof( snark::ouster::lidar::v2::measurement_block_t< 32 > ) << " byte measurement blocks" << std::endl;
+
+/*
+				snark::ouster::lidar::config_t config = load_config( );
+            	//intrinsics = intrinsics_t( config );
+				const unsigned int pixels_per_column = config.lidar_data_format.pixels_per_column;
+				snark::ouster::lidar::v2::measurement_block_t< 32 > measurement_block;
+				if( pixels_per_column == 16 ){ app< snark::ouster::lidar::v2::measurement_block_t< 16 >, snark::ouster::lidar::output_lidar_t >::run( config ); }
+				if( pixels_per_column == 32 ){ app< snark::ouster::lidar::v2::measurement_block_t< 32 >, snark::ouster::lidar::output_lidar_t >::run( config ); }
+ 				if( pixels_per_column == 64 ){ app< snark::ouster::lidar::v2::measurement_block_t< 64 >, snark::ouster::lidar::output_lidar_t >::run( config ); }
+				if( pixels_per_column == 128 ){ app< snark::ouster::lidar::v2::measurement_block_t< 128 >, snark::ouster::lidar::output_lidar_t >::run( config ); }
+*/
+
+/*
+					boost::asio::streambuf receiveBuffer;
+					//char buf[ sizeof( I )];
+					std::size_t size = sizeof( snark::ouster::lidar::v2::measurement_block_t< 32 > );
+					try {
+    					boost::asio::read(socket_, receiveBuffer, boost::asio::transfer_exactly(size));
+					} catch (const std::exception& ex) {
+						std::cerr << "readHeader Error: " << ex.what() << std::endl;
+					}
+					std::cout << "Received " << receiveBuffer.size() << " byte measurement blocks" << std::endl;
+					const char* buf = boost::asio::buffer_cast<const char*>(receiveBuffer.data());
+					const snark::ouster::lidar::v2::measurement_block_t< 32 >* data_block = reinterpret_cast< snark::ouster::lidar::v2::measurement_block_t< 32 >* >( &buf );
+					output_v2_lidar<snark::ouster::lidar::v2::measurement_block_t< 32 > >( *data_block );
+*/
+
+

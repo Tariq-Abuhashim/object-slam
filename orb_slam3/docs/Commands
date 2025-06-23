@@ -1,0 +1,33 @@
+
+# test deep shape priors only
+python reconstruct_frame.py --config configs/config_kitti.json --sequence_dir /home/mrt/data/kitti//07 --frame_id 100
+python reconstruct_frame.py --config configs/config_kitti.json --sequence_dir ~/data/kitti/2011_09_30/ --frame_id 650
+python reconstruct_frame.py --config configs/config_kitti.json --sequence_dir /home/mrt/data/output/ --frame_id 205
+
+# run full slam
+./demo Vocabulary/ORBvoc.txt configs/KITTI04-12.yaml data/kitti/07
+
+# Save and visualize map
+# Extract meshes from shape codes by running:
+python extract_map_objects.py --config configs/config_kitti.json --map_dir map/07 --voxels_dim 64
+# visualize the reconstructed joint map by running:
+python extract_map_objects.py --config configs/config_kitti.json --map_dir map/07 --voxels_dim 64
+
+
+# Steps to (1) delete libs, (2) delete env, (3) build new
+$ cd ~/ws/covins_dsp
+$ rm -r src/covins-dsdf/orb_slam3/build src/covins-dsdf/orb_slam3/lib/
+$ conda env remove -n dsp-orbslam3
+$ ./src/covins-dsdf/install_file.sh 8
+
+# Run example using orbslam3
+./stereo_inertial_kitti Vocabulary/ORBvoc.txt ~/data/kitti/2011_09_30/KITTI.yaml ~/data/kitti/2011_09_30/
+
+
+#Terminal 1
+roscore
+#Terminal 2
+source devel/setup.bash 
+rosrun covins_backend covins_backend_node
+#Terminal 3
+./Examples/Stereo/stereo_euroc Vocabulary/ORBvoc.txt /home/mrt/ws/covins_dsp/src/covins-dsdf/orb_slam3/Examples/Stereo/EuRoC.yaml /home/mrt/dev/ORB_SLAM3/data/euroc/MH_01_easy/mav0/ /home/mrt/ws/covins_dsp/src/covins-dsdf/orb_slam3/Examples/Stereo/EuRoC_TimeStamps/MH01.txt 

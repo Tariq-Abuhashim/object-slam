@@ -1,0 +1,61 @@
+---- sample-reader ----
+
+Starting with the format_testing.zip data file:
+
+$ unzip format_testing.zip
+$ cd format_testing/ouster
+$ mkdir cooked
+$ cd cooked
+$ cat ../lidar/20230424T060913.969605.bin | ouster-to-csv lidar --config ../../configs/config.json:ouster > 20230424T060913.969605.bin
+
+check with:
+
+$ cat 20230424T060913.969605.bin | csv-from-bin $( ouster-to-csv lidar --output-format ) | head
+
+You should see reasonable timestamps as the first field.
+
+The sample app then assumes a directory structure of:
+
+/path/to/data
+├── advanced-navigation
+│   └── 20230424T060914.628500.bin
+├── cameras
+│   └── alvium_1800_out
+│       └── 20230424T060914.204749.bin
+├── configs
+│   ├── config.json
+│   ├── log.json
+│   ├── publish.json
+│   └── ros-log.json
+└── ouster
+    ├── cooked
+    │   └── 20230424T060913.969605.bin
+    └── lidar
+        └── 20230424T060913.969605.bin
+
+
+
+---- sample-reader-tcp ----
+
+Note: this is not using comma::csv::binary_input_stream at the moment, because
+it's not so easy to create a vector of them (no copy constructor) and I was
+trying to make this version a bit generic. But I'll probably make another that's
+specific to our situation that does use them (which then makes further
+processing easier because you've already got the data structures).
+
+$ cd format_testing
+
+# then in three separate terminals:
+
+$ format=$( ouster-to-csv lidar --output-format )
+$ cat ouster/lidar/20230424T060913.969605.bin \
+| ouster-to-csv lidar --config configs/config.json:ouster \
+| csv-play --binary $format --slow 5 \
+| io-publish tcp:4000 --size $( echo $format | csv-format size )
+
+$ format=t,3ui,s[15197952]
+$ cat cameras/alvium_1800_out/20230424T060914.204749.bin \
+| csv-play --binary $format --slow 5 \
+| io-publish tcp:4001 --size $( echo $format | csv-format size )
+
+$ path/to/sample-reader-tcp "tcp:localhost:4000;binary=t,2uw,2ui,uw,3d,3uw,3d" "tcp:localhost:4001;binary=t,3ui,s[15197952]"

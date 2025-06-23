@@ -1,0 +1,101 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters. Adjust them!
+#--------------------------------------------------------------------------------------------
+
+# check these in python kitti_sequence.py lines 303-304
+day: "30"
+seq: "18"
+
+Camera.type: "PinHole"
+
+# Camera calibration and distortion parameters (OpenCV) 
+#Camera.fx: 707.0912
+#Camera.fy: 707.0912 
+#Camera.cx: 601.8873
+#Camera.cy: 183.1104
+
+Camera.fx: 721.5377
+Camera.fy: 721.5377
+Camera.cx: 609.5593
+Camera.cy: 172.8540
+
+Camera.k1: 0.0
+Camera.k2: 0.0
+Camera.p1: 0.0
+Camera.p2: 0.0
+
+Camera.width: 1242
+Camera.height: 375
+
+# Camera frames per second 
+Camera.fps: 10.0
+
+# stereo baseline times fx
+Camera.bf: 379.8145
+
+# Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
+Camera.RGB: 1
+
+# Close/Far threshold. Baseline times.
+ThDepth: 40.0
+
+# Transformation from camera 0 to body-frame (imu)
+Tbc: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: f
+   data: [-1.08863444e-03, -8.51207204e-03,  9.99963181e-01,  1.14389873e+00,
+          -9.99976401e-01, -6.77767331e-03, -1.14634371e-03, -3.12718481e-01,
+           6.78717906e-03, -9.99940733e-01, -8.50449205e-03,  7.26546049e-01,
+           0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  1.00000000e+00]
+
+# IMU noise
+IMU.NoiseGyro: 1.7e-03 # 1.6968e-04 
+IMU.NoiseAcc: 2.0e-02 # 2.0000e-3
+IMU.GyroWalk: 2.0e-04 
+IMU.AccWalk: 3.0e-02 # 3.0000e-3
+IMU.Frequency: 100
+
+#--------------------------------------------------------------------------------------------
+# Object SLAM
+#--------------------------------------------------------------------------------------------
+
+# Config path for Python detectors
+DetectorConfigPath: configs/config_kitti.json
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+
+# ORB Extractor: Number of features per image
+ORBextractor.nFeatures: 1000
+
+# ORB Extractor: Scale factor between levels in the scale pyramid 	
+ORBextractor.scaleFactor: 1.2
+
+# ORB Extractor: Number of levels in the scale pyramid	
+ORBextractor.nLevels: 8
+
+# ORB Extractor: Fast threshold
+# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
+# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
+# You can lower these values if your images have low contrast			
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.6
+Viewer.KeyFrameLineWidth: 2
+Viewer.GraphLineWidth: 4
+Viewer.PointSize: 2
+Viewer.CameraSize: 0.7
+Viewer.CameraLineWidth: 3
+Viewer.ViewpointX: 0
+Viewer.ViewpointY: -100
+Viewer.ViewpointZ: -0.1
+Viewer.ViewpointF: 2000
+

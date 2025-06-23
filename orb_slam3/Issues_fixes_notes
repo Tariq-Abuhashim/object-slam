@@ -1,0 +1,65 @@
+
+######## Issue with git
+Cloning into 'pytorch'...
+/usr/lib/git-core/git-remote-https: symbol lookup error: /lib/aarch64-linux-gnu/libp11-kit.so.0: undefined symbol: ffi_type_pointer, version LIBFFI_BASE_7.0
+
+$sudo apt-get update
+$sudo apt-get install --reinstall libffi7 libffi-dev libp11-kit0
+$sudo apt-get install --reinstall git
+$sudo apt-get update
+$sudo apt-get upgrade
+
+$ldd /usr/lib/git-core/git-remote-https
+
+The ldd output indicates that certain shared libraries used by git-remote-https are being pulled from your anaconda3 environment. This is likely the cause of the issue you're seeing.
+The specific lines to note are:
+libz.so.1 => /home/dv/anaconda3/envs/mmdeploy/lib/libz.so.1
+libffi.so.7 => /home/dv/anaconda3/envs/mmdeploy/lib/libffi.so.7
+libsqlite3.so.0 => /home/dv/anaconda3/envs/mmdeploy/lib/libsqlite3.so.0
+
+$mv /home/dv/anaconda3/envs/mmdeploy/lib/libffi.so.7 /home/dv/anaconda3/envs/mmdeploy/lib/libffi.so.7.bak
+
+
+######## Issue with cmake
+I have changed path in bashrc to fix libffi.7.so problem
+export LD_LIBRARY_PATH=/home/dv/anaconda3/envs/mmdeploy/lib/:$LD_LIBRARY_PATH
+
+but new issue with cmake showed up
+/usr/bin/cmake: /home/dv/anaconda3/lib/libcurl.so.4: no version information available (required by /usr/bin/cmake)
+
+to fix it
+# Backup the existing library from Anaconda
+mv /home/dv/anaconda3/lib/libcurl.so.4 /home/dv/anaconda3/lib/libcurl.so.4.bak
+# Create a symbolic link from the system library to the Anaconda library location
+ln -s /usr/lib/aarch64-linux-gnu/libcurl.so.4 /home/dv/anaconda3/lib/libcurl.so.4
+
+
+######## find out CMAKE_CUDA_ARCHITECTURES (Orin has 87)
+$python3
+>>>import pycuda.driver as cuda
+>>>cuda.init()
+>>>device = cuda.Device(0)
+>>>compute_capability = float('%d.%d' % device.compute_capability())
+>>>print(compute_capability)
+
+######## set CMAKE_CUDA_ARCHITECTURES (Orin has 87)
+
+set(TCNN_CUDA_ARCHITECTURES "86;87")
+set(CUDA_ARCHITECTURES "86;87")
+set(CMAKE_CUDA_ARCHITECTURES "86;87")
+set(CMAKE_CUDA_COMPILER "/usr/local/cuda-11.4/bin/nvcc")
+
+######## mmdet3d fixes (I think I still have these as they are, and it didnt affect the installation)
+
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+mmdet3d 1.0.0rc6 requires networkx<2.3,>=2.2, but you have networkx 3.1 which is incompatible.
+mmdet3d 1.0.0rc6 requires numba==0.53.0, but you have numba 0.57.1 which is incompatible.
+
+pip uninstall networkx
+pip install networkx==2.2
+
+pip uninstall numba
+pip install -U numba
+
+cp /usr/lib/aarch64-linux-gnu/libgeos_c.so /home/dv/anaconda3/envs/mmdeploy/lib/
+

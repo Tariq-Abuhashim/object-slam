@@ -1,0 +1,70 @@
+
+# libblas-dev (Base BLAS Library)
+# Provides the standard BLAS API (Basic Linear Algebra Subprograms) for fundamental operations like vector and matrix addition, multiplication, and dot products.
+# Other higher-level libraries, like LAPACK and OpenBLAS, depend on BLAS.
+
+# liblapack-dev (Advanced Linear Algebra via LAPACK)
+# Built on top of BLAS, LAPACK provides more complex routines like Solving systems of linear equations, Eigenvalue problems, Singular Value Decomposition (SVD).
+
+# libopenblas-dev (Optimized BLAS Implementation)
+# A high-performance, optimized implementation of BLAS that can replace the reference BLAS for better efficiency.
+# includes both BLAS and LAPACK APIs, so technically it can replace libblas-dev and liblapack-dev in most cases.
+# However, Some projects might explicitly depend on libblas-dev or liblapack-dev, Installing all three ensures compatibility with a wide range of software.
+
+
+sudo apt-get install libopenblas-dev libblas-dev liblapack-dev ninja-build
+
+
+sudo apt install libcudnn8-dev libmkl-dev llvm
+
+
+pip install spconv-cu114==2.3.6 cumm-cu114==0.4.11 numpy==1.19.3 numba==0.53.0 open3d==0.18.0 llvmlite==0.36.0 \
+	    scikit-image==0.18.3 plyfile==1.0.3 nuscenes-devkit==1.1.9 addict==2.4.0 \
+	    onnxruntime==1.10.0 Pillow==10.4.0 imageio==2.35.1 pytesseract==0.3.10 pyquaternion==0.9.9
+
+	    
+python3 -m pip install astunparse numpy==1.19.3 ninja pyyaml mkl mkl-include setuptools cmake cffi typing_extensions future six requests dataclasses
+
+
+### (torch-1.11.0 + torchvision-0.12.0) or (torch-1.12.0 + torchvision-0.13.0)
+------------------------------------------------------------------------------
+
+cd ~/src
+
+(torch 1.11.0a0+gitbc2c6ed)
+git clone -b v1.11.0 https://github.com/pytorch/pytorch  # (torch 1.11 or torch 1.12)
+cd ~/src/pytorch
+sudo USE_BLAS=OpenBLAS BLAS=OpenBLAS CMAKE_CUDA_ARCHITECTURES="75" CUDA_HOME=/usr/local/cuda-11.4 CUDACXX=/usr/local/cuda-11.4/bin/nvcc python3 setup.py install
+
+(torchvision 0.12.0a0+9b5a3fe)
+pip install torchvision==0.12.0
+#git clone -b v0.12.0 https://github.com/pytorch/vision  # use v0.13.0 with cuda 11.4
+#cd ~/src/vision
+#sudo CMAKE_CUDA_ARCHITECTURES="75" CUDA_HOME=/usr/local/cuda-11.4 CUDACXX=/usr/local/cuda-11.4/bin/nvcc python3 setup.py install
+
+
+### mmlab
+---------
+
+pip install spconv-cu114==2.3.6 cumm-cu114==0.4.11 numpy==1.19.3 numba==0.53.0 open3d==0.18.0 llvmlite==0.36.0 \
+	    scikit-image==0.18.3 plyfile==1.0.3 nuscenes-devkit==1.1.9 addict==2.4.0 \
+	    onnxruntime==1.10.0 Pillow==10.4.0 imageio==2.35.1 pytesseract==0.3.10 pyquaternion==0.9.9 \
+	    mmcv-full==1.7.0 mmdet==2.28.2 mmsegmentation==0.30.0 mmdet3d==1.0.0rc6 -f https://download.openmmlab.com/mmcv/dist/cu114/torch1.11.0/index.html        
+#pip uninstall mmcv-full mmcv mmdet mmsegmentation mmdet3d
+
+cd ~/src
+pip uninstall mmdet3d
+git clone https://github.com/open-mmlab/mmdetection3d.git
+cd mmdetection3d
+git checkout v1.0.0rc6 
+pip install -e .
+
+### slam
+--------
+
+cd orbslam3
+mkdir build
+cd build
+conda_python_bin=`which python`
+conda_env_dir="$(dirname "$(dirname "$conda_python_bin")")"
+cmake -DCMAKE_BUILD_TYPE=Debug ..
