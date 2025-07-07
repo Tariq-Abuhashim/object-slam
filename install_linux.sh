@@ -108,7 +108,7 @@ source devel/setup.bash
 # Build orb_slam3
 
 cd ${BASEDIR}/orb_slam3
-./build.sh
+./build_cuda114.sh --build-dependencies
 
 #if [[ $* == *--create-conda-env* ]]
 #then
