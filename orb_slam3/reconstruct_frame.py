@@ -1,11 +1,13 @@
 
 from reconstruct.utils import color_table, set_view, get_configs, get_decoder
 from reconstruct.loss_utils import get_time
-from reconstruct.kitti_sequence_ import KITIISequence
+#from reconstruct.kitti_sequence_ import KITIISequence
+from reconstruct.kitti_sequence import KITIISequence
 from reconstruct.optimizer import Optimizer, MeshExtractor
 
 import open3d as o3d
 import argparse
+import numpy as np
 
 
 def config_parser():
@@ -50,8 +52,13 @@ if __name__ == "__main__":
 
     # Add LiDAR point cloud
     velo_pts, colors = kitti_seq.current_frame.get_colored_pts()
+    
     scene_pcd = o3d.geometry.PointCloud()
     scene_pcd.points = o3d.utility.Vector3dVector(velo_pts)
+    
+    print("Points shape:", np.asarray(scene_pcd.points).shape)
+    print("Colors shape:", colors.shape)
+
     scene_pcd.colors = o3d.utility.Vector3dVector(colors)
     vis.add_geometry(scene_pcd)
 

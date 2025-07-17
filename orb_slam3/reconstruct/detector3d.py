@@ -82,6 +82,7 @@ class Detector3D(object):
         # read in kitti data file .bin format
         if isinstance(velo, str): # for velo as filename
             velo = self.load_kitti_lidar_bin(velo); # from filename to numpy points (dont need this for kitti)
+            print(f"velo shape {velo[0].size}")
 
         #velo[:, 0]-=5
         #R = self.rotation_matrix(-90, 90, 0) #FIXME remove this to C++ .bin making file
@@ -106,6 +107,7 @@ class Detector3D(object):
         scores = predictions[0]["scores_3d"]
         valid_mask = (labels == 0) & (scores > 0.0) # FIXME was 0.0
         boxes = predictions[0]["boxes_3d"].tensor
+        print(f"boxes shape {boxes.shape}")
 
         return boxes[valid_mask]
 
