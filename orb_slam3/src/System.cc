@@ -132,7 +132,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
             InitThread();  // This should be called right after interpreter initialization
 			
 			{
-				//py::gil_scoped_acquire acquire;
+				py::gil_scoped_acquire acquire;
 				
 				/* System checks */
 				

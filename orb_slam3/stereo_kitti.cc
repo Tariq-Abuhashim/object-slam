@@ -134,8 +134,8 @@ int main(int argc, char **argv)
 		std::cout << "[STEREO_KITTI] Starting for sequence " << seq << " ..." << std::endl;
 
         // Seq loop
-        //for(int ni=0; ni<nImages[seq]; ni++)
-		for(int ni=0; ni<1; ni++)
+        for(int ni=0; ni<nImages[seq]; ni++)
+		//for(int ni=0; ni<1; ni++)
         {
         	//cout << ni << endl;
         	//cout << vstrImageLeft[seq][ni] << endl;  
