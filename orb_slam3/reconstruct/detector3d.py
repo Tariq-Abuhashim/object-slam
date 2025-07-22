@@ -2,7 +2,6 @@
 import numpy as np
 import torch
 import mmcv
-#import mmdet3d
 
 from mmcv.runner import load_checkpoint
 from mmdet3d.models import build_model
@@ -11,8 +10,17 @@ from mmdet3d.core.points import BasePoints, get_points_type
 
 import matplotlib.pyplot as plt
 
+# Configure logging for the module
+import logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d (%(funcName)s) - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
 def get_detector3d(configs):
-    print('Setting detector3D')
+    logger.debug("Setting detector3D")
     return Detector3D(configs)
 
 class Detector3D(object):
@@ -82,7 +90,7 @@ class Detector3D(object):
         # read in kitti data file .bin format
         if isinstance(velo, str): # for velo as filename
             velo = self.load_kitti_lidar_bin(velo); # from filename to numpy points (dont need this for kitti)
-            print(f"velo shape {velo[0].size}")
+            #print(f"velo shape {velo[0].size}")
 
         #velo[:, 0]-=5
         #R = self.rotation_matrix(-90, 90, 0) #FIXME remove this to C++ .bin making file
@@ -107,7 +115,7 @@ class Detector3D(object):
         scores = predictions[0]["scores_3d"]
         valid_mask = (labels == 0) & (scores > 0.0) # FIXME was 0.0
         boxes = predictions[0]["boxes_3d"].tensor
-        print(f"boxes shape {boxes.shape}")
+        #print(f"boxes shape {boxes.shape}")
 
         return boxes[valid_mask]
 
