@@ -132,6 +132,11 @@ public:
 
     // Initialize the SLAM system. It launches the Local Mapping, Loop Closing and Viewer threads.
     System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor, const bool bUseViewer = true, const int initFr = 0, const string &strSequence = std::string(), const string &strLoadingFile = std::string());
+    
+    ~System() {
+    	/* Object-SLAM */
+    	finalize();  // Safe to call even if Python isn't initialized
+    }
 
     // Proccess the given stereo frame. Images must be synchronized and rectified.
     // Input images: RGB (CV_8UC3) or grayscale (CV_8U). RGB is converted to grayscale.
@@ -216,7 +221,7 @@ public:
     void InsertTrackTime(double& time);
 #endif
 
-    // Object-SLAM
+    /* Object-SLAM */
     inline void InitThread()
     {
         if (!PyEval_ThreadsInitialized())
@@ -226,13 +231,22 @@ public:
     };
 	/* finalise the interpreter
 	*/
-	inline void finalize() {
-        py::finalize_interpreter();
-    };
+    inline void finalize() {
+		// Clear Python objects before finalization
+		pySequence = py::object();
+		pyDecoder = py::object();
+		pyCfg = py::object();
+    			
+		// Finalize from main thread
+		py::finalize_interpreter();
+		
+		cout << "[SLAM] Python interpreter finalized" << endl;
+	};
     py::object pyCfg;
     py::object pyDecoder;
     py::object pySequence;
 
+	/* Communications */
 	boost::asio::ip::tcp::socket* socket_;
 	//std::string server_;
 	//std::string port_;
@@ -321,6 +335,17 @@ private:
     std::vector<MapPoint*> mTrackedMapPoints;
     std::vector<cv::KeyPoint> mTrackedKeyPointsUn;
     std::mutex mMutexState;
+    
+    // Object-slam
+    void check_lapack_blas_linkage();
+    void check_numpy();
+    void check_open3d();
+    void check_numba();
+    void check_pytorch_cuda();
+    void check_mmcv();
+    void check_mmseg();
+    void check_mmdet();
+    void check_mmdet3d();
 };
 
 }// namespace ORB_SLAM

@@ -12,73 +12,92 @@
 */
 
 #include <iostream>
-#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <chrono>
-#include <ctime>
+#include <thread>
 #include <sstream>
+#include <algorithm>
 
 #include <opencv2/core/core.hpp>
-
 #include <System.h>
 #include "ImuTypes.h"
-#include "Optimizer.h"
 
-// COVINS
-#include <covins/covins_base/config_comm.hpp> //for covins_params
+#include <filesystem>
+namespace fs = std::filesystem;
 
 using namespace std;
 
 void LoadImages(const string &pathSeq, vector<string> &vstrImageLeft,
                 vector<string> &vstrImageRight, vector<double> &vTimeStamps);
+void LoadIMU(const string &pathSeq, vector<double> &vTimeStamps, 
+			 vector<cv::Point3f> &vAcc, vector<cv::Point3f> &vGyro);
+			 
+std::vector<std::pair<std::string, std::string>> GetDrivePairs(const std::string &baseDir);
 
-void LoadIMU(const string &pathSeq, vector<double> &vTimeStamps, vector<cv::Point3f> &vAcc, vector<cv::Point3f> &vGyro);
-
-double ttrack_tot = 0;
 int main(int argc, char **argv)
 {
-    if(argc < 4)
-    {
-        cerr << endl << "Usage: ./demo path_to_vocabulary path_to_settings path_to_sequence" << endl;
-		cerr << endl << "Examples:" << endl;
-		cerr << endl << "./stereo_kitti Vocabulary/ORBvoc.bin ~/Whale/data/kitti/2011_09_30/KITTI.yaml ~/Whale/data/kitti/2011_09_30/" << endl;
-        return 1;
-    }
+	if(argc < 4)
+	{
+		std::cerr << std::endl 
+		          << "Usage: ./stereo_kitti "
+		          << "<path_to_vocabulary> "
+		          << "<path_to_settings> "
+		          << "<path_to_seq1> "
+		          << "[<path_to_seq2> ...]"
+		          << std::endl;
 
-	const int num_seq = (argc-3)/1;
-    cout << "num_seq = " << num_seq << endl;
+		std::cerr << std::endl << "Examples:" << std::endl;
+
+		std::cerr << "./stereo_kitti "
+		          << "Vocabulary/ORBvoc.txt "
+		          << "/media/mrt/Whale/data/kitti/07/KITTI04-12.yaml "
+		          << "/media/mrt/Whale/data/kitti/07/"
+		          << std::endl;
+
+		std::cerr << "./stereo_kitti "
+		          << "Vocabulary/ORBvoc.txt "
+		          << "/media/mrt/Whale/data/kitti/2011_09_30/KITTI.yaml "
+		          << "/media/mrt/Whale/data/kitti/2011_09_30"
+		          << std::endl;
+
+		std::cerr << std::endl << "Debug mode (then type <run>):" << std::endl;
+		std::cerr << "gdb --args ./stereo_kitti "
+		          << "Vocabulary/ORBvoc.txt "
+		          << "/media/mrt/Whale/data/kitti/07/KITTI04-12.yaml "
+		          << "/media/mrt/Whale/data/kitti/07/"
+		          << std::endl;
+
+		return 1;
+	}
+
+	const string vocabFile = argv[1];
+    const string settingsFile = argv[2];
+    
+    const int num_seq = argc - 3;
+    cout << "[STEREO_KITTI] num_seq = " << num_seq << endl;
     bool bFileName= (((argc-3) % 1) == 1);
     string file_name;
     if (bFileName)
     {
         file_name = string(argv[argc-1]);
-        cout << "file name: " << file_name << endl;
+        cout << "[STEREO_KITTI] file name: " << file_name << endl;
     }
-
-	cv::FileStorage fSettings(argv[2], cv::FileStorage::READ);
-	string day = fSettings["day"];
-	string seqnum = fSettings["seq"];
+    
+  	cv::FileStorage fSettings(settingsFile, cv::FileStorage::READ);
+	const string day = fSettings["day"];
+	const string seqnum = fSettings["seq"];
 
     // Load all sequences:
     int seq;
     vector< vector<string> > vstrImageLeft;
     vector< vector<string> > vstrImageRight;
     vector< vector<double> > vTimestampsCam;
-    vector< vector<cv::Point3f> > vAcc, vGyro;
-    vector< vector<double> > vTimestampsImu;
     vector<int> nImages;
-    vector<int> nImu;
-    vector<int> first_imu(num_seq,0);
-
     vstrImageLeft.resize(num_seq);
     vstrImageRight.resize(num_seq);
     vTimestampsCam.resize(num_seq);
-    vAcc.resize(num_seq);
-    vGyro.resize(num_seq);
-    vTimestampsImu.resize(num_seq);
     nImages.resize(num_seq);
-    nImu.resize(num_seq);
 
 	cout << endl << "-------" << endl;
     cout.precision(17);
@@ -86,150 +105,90 @@ int main(int argc, char **argv)
     int tot_images = 0;
     for (seq = 0; seq<num_seq; seq++)
     {
-        cout << "Loading images for sequence " << seq << "...";
+        string pathSeq(argv[(2*seq) + 3]);
 
-        //string pathSeq(argv[(2*seq) + 3]);
-        //string pathTimeStamps(argv[(2*seq) + 4]);
-		string pathSeq(argv[3]);
-
-        cout << "Loading images for sequence " << seq << "...";
-        LoadImages(pathSeq+"/2011_09_"+day+"_drive_00"+seqnum+"_sync", vstrImageLeft[seq], vstrImageRight[seq], vTimestampsCam[seq]);
-        cout << "LOADED!" << endl;
-
-		cout << "Loading IMU for sequence " << seq << "...";
-		LoadIMU(pathSeq+"/2011_09_"+day+"_drive_00"+seqnum+"_extract", vTimestampsImu[seq], vAcc[seq], vGyro[seq]);
-		cout << "LOADED!" << endl;
-
-		//for (int i = 0; i<vTimestampsImu[seq].size(); i++)
-		//	cout << vTimestampsImu[seq][i] << " " << vAcc[seq][i] << " " << vGyro[seq][i] << endl;
+        cout << "[STEREO_KITTI] Loading images for sequence " << seq << "...\n";
+        LoadImages(pathSeq, vstrImageLeft[seq], vstrImageRight[seq], vTimestampsCam[seq]);
+        std::cout 	<< "[STEREO_KITTI] Sequence has " 
+        			<< vstrImageLeft[seq].size() 
+        			<< " Images ..." << std::endl;
 
         nImages[seq] = vstrImageLeft[seq].size();
         tot_images += nImages[seq];
-        nImu[seq] = vTimestampsImu[seq].size();
-
-        if((nImages[seq]<=0)||(nImu[seq]<=0))
-        {
-            cerr << "ERROR: Failed to load images or IMU for sequence" << seq << endl;
-            return 1;
-        }
-
-        // Find first imu to be considered, supposing imu measurements start first
-        while(vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][0])
-            first_imu[seq]++;
-        first_imu[seq]--; // first imu measurement to be considered
     }
-
 	cout << endl << "-------" << endl;
+	
+	// Create SLAM system. It initializes all system threads and gets ready to process frames.
+	ORB_SLAM3::System SLAM(argv[1], argv[2], ORB_SLAM3::System::STEREO, false, 0, argv[3]);
 
     // Vector for tracking time statistics
     vector<float> vTimesTrack;
     vTimesTrack.resize(tot_images);
-
-    // Create SLAM system. It initializes all system threads and gets ready to process frames.
-	ORB_SLAM3::System SLAM(argv[1], argv[2], ORB_SLAM3::System::STEREO, true, 0, argv[3]);
+    double t_track = 0;
+    double ttrack_tot = 0;
 
     cv::Mat imLeft, imRight;
     for (seq = 0; seq<num_seq; seq++)
     {
-		std::cout << "\n Starting for sequence " << seq << " ... \n" << std::endl;
+    	std::cout << std::endl;
+		std::cout << "[STEREO_KITTI] Starting for sequence " << seq << " ..." << std::endl;
 
         // Seq loop
-        vector<ORB_SLAM3::IMU::Point> vImuMeas;
-        double t_track = 0;
-        int proccIm = 0;
-        for(int ni=0; ni<nImages[seq]; ni++, proccIm++)
-        //for(int ni=0; ni<100; ni++, proccIm++)
+        //for(int ni=0; ni<nImages[seq]; ni++)
+        for(int ni=0; ni<10; ni++)
         {
+        	cout << ni << endl;
+        	//cout << vstrImageLeft[seq][ni] << endl;  
+        	//cout << vstrImageRight[seq][ni] << endl;
+        	  	
             // Read left and right images from file
             imLeft = cv::imread(vstrImageLeft[seq][ni],cv::IMREAD_UNCHANGED);
             imRight = cv::imread(vstrImageRight[seq][ni],cv::IMREAD_UNCHANGED);
 
             if(imLeft.empty())
             {
-                cerr << endl << "Failed to load image at: "
+                cerr << endl << "[STEREO_KITTI] Failed to load image at: "
                      << string(vstrImageLeft[seq][ni]) << endl;
                 return 1;
             }
 
             if(imRight.empty())
             {
-                cerr << endl << "Failed to load image at: "
+                cerr << endl << "[STEREO_KITTI] Failed to load image at: "
                      << string(vstrImageRight[seq][ni]) << endl;
                 return 1;
             }
-
+            
             double tframe = vTimestampsCam[seq][ni];
-
-            // Load imu measurements from previous frame
-            vImuMeas.clear();
-
-            if(ni>0)
-                while(vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][ni])
-                {
-                    vImuMeas.push_back(ORB_SLAM3::IMU::Point(vAcc[seq][first_imu[seq]].x,vAcc[seq][first_imu[seq]].y,vAcc[seq][first_imu[seq]].z,
-                                                             vGyro[seq][first_imu[seq]].x,vGyro[seq][first_imu[seq]].y,vGyro[seq][first_imu[seq]].z,
-                                                             vTimestampsImu[seq][first_imu[seq]]));
-                    first_imu[seq]++;
-                }
-
- //   #ifdef COMPILEDWITHC11
             std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
- //   #else
- //           std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
- //   #endif
-
+            
             // Pass the images to the SLAM system
-            SLAM.TrackStereo(imLeft,imRight,tframe); //,vImuMeas);
-
- //   #ifdef COMPILEDWITHC11
+            //SLAM.TrackStereo(imLeft,imRight,tframe); //,vImuMeas);
+            
             std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
- //   #else
- //           std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
- //   #endif
-
+            t_track = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t2-t1).count();
+            ttrack_tot += t_track;
+            vTimesTrack[ni] = t_track;
+            
 #ifdef REGISTER_TIMES
-            t_track = t_rect + std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t2 - t1).count();
-            SLAM.InsertTrackTime(t_track);
+            //SLAM.InsertTrackTime(t_track);
 #endif
-
-            double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
-			ttrack_tot += ttrack;
-
-            vTimesTrack[ni]=ttrack;
-
-            // Wait to load the next frame
+          
+			// Wait to load the next frame (following actually timestamps of data)
             double T=0;
             if(ni<nImages[seq]-1)
                 T = vTimestampsCam[seq][ni+1]-tframe;
             else if(ni>0)
                 T = tframe-vTimestampsCam[seq][ni-1];
-
-            if(ttrack<T)
-                usleep((T-ttrack)*1e6); // 1e6
-        }
-        if(seq < num_seq - 1)
-        {
-            cout << "Changing the dataset" << endl;
-
-            SLAM.ChangeDataset();
-        }
-    }
-    cv::waitKey(0);
-    // Stop all threads
-    SLAM.Shutdown();
-
-    // Save camera trajectory
-    if (bFileName)
-    {
-        const string kf_file =  "kf_" + string(argv[argc-1]) + ".txt";
-        const string f_file =  "f_" + string(argv[argc-1]) + ".txt";
-        SLAM.SaveTrajectoryEuRoC(f_file);
-        SLAM.SaveKeyFrameTrajectoryEuRoC(kf_file);
-    }
-    else
-    {
-        SLAM.SaveTrajectoryEuRoC("CameraTrajectory.txt");
-        SLAM.SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
+            if(t_track<T)
+                usleep((T-t_track)*1e6); // 1e6
+            
+		}
+		
+		if(seq < num_seq - 1) {
+			cout << "[STEREO_KITTI] Changing the dataset" << endl;
+			//SLAM.ChangeDataset();
+		}
     }
 
     return 0;
@@ -238,18 +197,29 @@ int main(int argc, char **argv)
 void LoadImages(const string &pathSeq, vector<string> &vstrImageLeft,
                 vector<string> &vstrImageRight, vector<double> &vTimeStamps)
 {
+
+	std::cout << "[LoadImages] pathSeq := " + pathSeq << std::endl;
+	
     ifstream fTimes;
-    //string strPathTimeFile = pathSeq + "/times.txt";
-	string strPathTimeFile = pathSeq + "/oxts/timestamps.txt";
+    string strPathTimeFile = pathSeq + "/times.txt";
+	//string strPathTimeFile = pathSeq + "/oxts/timestamps.txt";
     fTimes.open(strPathTimeFile.c_str());
+    if (!fTimes.is_open()) {
+    	std::cerr << "[LoadImages] Couldn't open " << strPathTimeFile << std::endl;
+    	exit(1);
+	}
+
 	vTimeStamps.reserve(5000);
     vstrImageLeft.reserve(5000);
     vstrImageRight.reserve(5000);
-    while(!fTimes.eof())
+    
+    /* read timestamps from file
+    	format = yyyy-mm-dd hh:mm:s */
+    //while(!fTimes.eof()) //eof() only becomes true after a failed read.
+/*    string str;
+    while (getline(fTimes, str))
     {
-        string str;
-        getline(fTimes,str);
-        if(!str.empty())
+		if(!str.empty())
         {
 			int yyyy, mm, dd, h, m = 0;
 			double s = 0;
@@ -260,76 +230,53 @@ void LoadImages(const string &pathSeq, vector<string> &vstrImageLeft,
 				vTimeStamps.push_back(t);
 			}
         }
+    } */
+    
+    /* read timestamps from file
+    	format = seconds */
+    //while(!fTimes.eof()) //eof() only becomes true after a failed read.
+    string str;
+    while (getline(fTimes, str))
+    {
+		if(!str.empty())
+        {
+			double s = 0;
+			if (sscanf(str.c_str(), "%lf", &s) == 1)
+			{
+				vTimeStamps.push_back(s);
+			}
+        }
     }
+    
+    /* fake timestamps using fps
+    	this is not useful if IMU-Image synchronisation is needed*/
+/*    const float fps = 20.;
+    const float dt = 1. / fps;
+    float t = 0.;
+    string s;
+    while(getline(fTimes,s))
+    {
+        if(!s.empty())
+        {
+            vTimeStamps.push_back(t);
+            t += dt;
+        }
+    } */
+    
 	const int nTimes = vTimeStamps.size();
-
-    string strPrefixLeft = pathSeq + "/image_00/data/";
-    string strPrefixRight = pathSeq + "/image_01/data/";
+	std::cout << "[LoadImages] nTimes " << nTimes << "\n";
+	
+    //string strPrefixLeft = pathSeq + "/image_00/data/";
+    //string strPrefixRight = pathSeq + "/image_01/data/";
+    string strPrefixLeft = pathSeq + "/image_0/";
+    string strPrefixRight = pathSeq + "/image_1/";
     vstrImageLeft.resize(nTimes);
     vstrImageRight.resize(nTimes);
     for(int i=0; i<nTimes; i++)
     {
         stringstream ss;
-        ss << setfill('0') << setw(10) << i;
+        ss << setfill('0') << setw(6) << i;  // FIXME 6 or 10
         vstrImageLeft[i] = strPrefixLeft + ss.str() + ".png";
         vstrImageRight[i] = strPrefixRight + ss.str() + ".png";
     }
-}
-
-void LoadIMU(const string &pathSeq, vector<double> &vTimeStamps, vector<cv::Point3f> &vAcc, vector<cv::Point3f> &vGyro)
-{
-
-	ifstream fTimes;
-    string strPathTimeFile = pathSeq + "/oxts/timestamps.txt";
-	fTimes.open(strPathTimeFile.c_str());
-    while(!fTimes.eof())
-    {
-        string str;
-        getline(fTimes,str);
-        if(!str.empty())
-        {
-			int yyyy, mm, dd, h, m = 0;
-			double s = 0;
-			if (sscanf(str.c_str(), "%d-%d-%d %d:%d:%lf", &yyyy, &mm, &dd, &h, &m, &s) == 6)
-			{
-  				double t = h *3600 + m*60 + s;
-				//cout << t << endl;
-				vTimeStamps.push_back(t);
-			}
-        }
-    }
-	const int nTimes = vTimeStamps.size();
-
-    vAcc.reserve(50000);
-    vGyro.reserve(50000);
-	for(int i=0; i<nTimes; i++)
-	{
-		stringstream ss;
-		ss << setfill('0') << setw(10) << i;
-		string strImuPath = pathSeq + "/oxts/data/" + ss.str() + ".txt";
-		//cout << strImuPath << endl;
-		ifstream fImu;
-		fImu.open(strImuPath.c_str());
-
-		string s;
-		getline(fImu,s);
-		if(!s.empty())
-        {
-            string item;
-            size_t pos = 0;
-            double data[30];
-            int count = 0;
-            while ((pos = s.find(' ')) != string::npos) {
-                item = s.substr(0, pos); // get sub string at starting location 0 with length pos
-                data[count++] = stod(item); // Convert string to double
-                s.erase(0, pos + 1); // string& erase (size_t pos = 0, size_t len = npos);
-            }
-            item = s.substr(0, pos);
-            data[29] = stod(item);
-
-            //vTimeStamps.push_back(data[0]/1e9);
-            vAcc.push_back(cv::Point3f(data[14],data[15],data[16]));
-            vGyro.push_back(cv::Point3f(data[20],data[21],data[22]));
-        }
-	}
 }

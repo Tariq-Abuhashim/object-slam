@@ -248,6 +248,9 @@ target_link_libraries(dsp_slam ${PROJECT_NAME})
 add_executable(mono_snark mono_snark.cc)
 target_link_libraries(mono_snark ${PROJECT_NAME})
 
+add_executable(test_pybind test_pybind.cpp)
+target_link_libraries(test_pybind ${PROJECT_NAME})
+
 #add_executable(reconstruct_frame reconstruct_frame.cpp)
 #target_link_libraries(reconstruct_frame ${PROJECT_NAME})
 #add_executable(image_from_bin image_from_bin.cc)

@@ -1,0 +1,64 @@
+
+# A segmentation fault may occure when importing python modules.
+
+
+CAUSE 1:
+========
+# One cause was conflicting or unlinked blas/lapack libraries.
+
+# To find out, run the example file using in debug mode:
+
+'''
+$ gdb --args ./stereo_kitti Vocabulary/ORBvoc.txt /media/mrt/Whale/data/kitti/07/KITTI04-12.yaml /media/mrt/Whale/data/kitti/07/
+(gdb) run # run the program
+(gdb) bt  # backtrace when it crashes
+'''
+
+# In this case. the error was:
+
+Thread 1 "stereo_kitti" received signal SIGSEGV, Segmentation fault.
+0x00007fffedfa16bf in dgemm_otcopy_PRESCOTT () from /lib/x86_64-linux-gnu/libblas.so.3
+
+# Fix:
+
+'''
+sudo apt update
+sudo apt install libblas-dev liblapack-dev
+python3 -m pip uninstall numpy -y
+python3 -m pip install "numpy>=1.19.5,<1.27.0" --no-binary numpy
+python3 -m pip install pybind11 scipy pandas open3d
+python3 -c "import numpy; numpy.show_config()"
+'''
+
+# Look for Look for BLAS/LAPACK linkage information.
+
+# Check versions
+
+'''
+python3 -c "import numpy, scipy, pandas, open3d; \
+            print(f'numpy: {numpy.__version__}\nscipy: {scipy.__version__}\npandas: {pandas.__version__}\nopen3d: {open3d.__version__}')"
+numpy: 1.24.4
+scipy: 1.10.1
+pandas: 2.0.3
+open3d: 0.19.0
+'''
+
+
+CAUSE 2:
+========
+Sometimes, its because of mmdet, mmdet3d, mmcv, and mmseg versions.
+simply test:
+
+'''
+python3
+import mmcv
+import mmdet
+import mmseg
+import mmdet3d
+'''
+
+
+NOTE:
+=====
+./test_pybind
+will test python threading and pytorch import.
