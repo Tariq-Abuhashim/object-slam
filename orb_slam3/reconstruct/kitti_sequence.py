@@ -3,6 +3,8 @@ import numpy as np
 import os
 import cv2
 import torch
+import logging
+
 from reconstruct.loss_utils import get_rays, get_time
 from reconstruct.utils import ForceKeyErrorDict, read_calib_file, load_velo_scan, set_view
 from reconstruct import get_detectors
@@ -14,6 +16,15 @@ try:
 except ImportError:
     raise ImportError(
         'Please run "pip install open3d" to install open3d first.')
+
+# Configure logging for the module
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d (%(funcName)s) - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+logger = logging.getLogger(__name__)
 
 
 class FrameWithLiDAR:
@@ -67,7 +78,9 @@ class FrameWithLiDAR:
         self.online = sequence.online
         self.detector_2d = sequence.detector_2d
         self.detector_3d = sequence.detector_3d
-        #self.frame_fmt = getattr(sequence, 'frame_fmt', "%06d")
+
+        #TODO this variable was proposed to fix 06d or 010d variation
+        #self.frame_fmt = getattr(sequence, 'frame_fmt', "%06d") 
 
 
     def _setup_camera_params(self, sequence):
@@ -95,7 +108,9 @@ class FrameWithLiDAR:
             rgb_file = os.path.join(self.rgb_dir, f"{frame_id:06d}.png") #TODO  06d or 010d
             if not os.path.exists(rgb_file):
                 raise FileNotFoundError(f"RGB file not found: {rgb_file}")
+            logger.debug("Attempting to load image: %s", rgb_file)
             self.img_bgr = cv2.imread(rgb_file)
+            logger.debug("Image shape: %s", self.img_rgb.shape)
             if self.img_bgr is None:
                 raise ValueError(f"Failed to load image: {rgb_file}")
         elif image is not None:
@@ -110,11 +125,14 @@ class FrameWithLiDAR:
     def _load_lidar_data(self, frame_id, velo_pts):
         """Load LiDAR data from file or direct input."""
         if frame_id is not None:
-            self.velo_file = os.path.join(self.velo_dir, f"{frame_id:06d}.bin") #TODO  06d or 010d
             #self.velo_file = os.path.join(self.velo_dir, self.frame_fmt % frame_id + ".bin")
+            self.velo_file = os.path.join(self.velo_dir, f"{frame_id:06d}.bin") #TODO  06d or 010d
             if not os.path.exists(self.velo_file):
+                logger.error(f"Velodyne file not found: {self.velo_file}")
                 raise FileNotFoundError(f"Velodyne file not found: {self.velo_file}")
+            logger.debug("Attempting to load LiDAR file: %s", self.velo_file)
             self.velo_pts = load_velo_scan(self.velo_file)
+            logger.debug("Loaded %d LiDAR points", self.velo_pts.shape[0])
         elif velo_pts is not None:
             self.velo_pts = velo_pts
         else:
@@ -349,20 +367,21 @@ class FrameWithLiDAR:
         """Run 3D detector and return array of detections."""
         t1 = get_time()
         # get lidar points here
+        logger.info("Running 3D detection on frame %s", self.frame_id)
         if self.online:
             #if hasattr(self, "velo_file"):  # FIXME suggested replacement
             if self.frame_id is not None:   
-                print(f"velo_file = {self.velo_file}")
+                logger.debug(f"Using velodyne file: {self.velo_file}")
                 detections = self.detector_3d.make_prediction(self.velo_file).cpu().numpy()
             else:
-                #print(self.velo_pts)
                 detections = self.detector_3d.make_prediction(self.velo_pts).cpu().numpy()
         else:
             #label_path = os.path.join(self.lbl3d_dir, self.frame_fmt % self.frame_id + ".lbl") # FIXME suggested replacement
             label_path_3d = os.path.join(self.lbl3d_dir,  "%06d.lbl" % self.frame_id)
             detections = torch.load(label_path_3d)
         t2 = get_time()
-        print("3D detector took %.3f seconds" % (t2 - t1))
+        logger.info("3D detector took %.3f seconds", (t2 - t1))
+        logger.info("Number of 3D detections: %d", len(detections))
         
         if detections.ndim == 1:
             detections = detections[None, :]
@@ -411,7 +430,7 @@ class FrameWithLiDAR:
         # or
         # size = [l, w, h]  # for mmdet3d 0.18.1
         l,w,h = list(size/2.0)
-        #w *= 1.1 #
+        #w *= 1.1 # FIXME this was used in original repo
         #l *= 1.1
         in_box_mask = ( (points_obj[:, 0] > -w) & (points_obj[:, 0] < w) &
                         (points_obj[:, 1] > -h) & (points_obj[:, 1] < h) &
@@ -440,7 +459,9 @@ class FrameWithLiDAR:
         instance.num_surface_points = points_cam.shape[0]
         instance.is_front = T_cam_obj[2, 3] > 0.0 # FIXME set to True to see all the scan objects
         instance.rays = None
-        
+
+        logger.debug("Created 3D instance with %d surface points", points_cam.shape[0])
+
         # Get the box
         line_set = None # FIXME is this okay?
         if self.visualize: # was if show_3d
@@ -570,17 +591,19 @@ class FrameWithLiDAR:
     def _process_detections_2d(self):
         """Run 2D detector and return array of detections."""
         t3 = get_time()
-        print(f"[_process_detections_2d] Image shape: {self.img_bgr.shape}")
         if self.online:
+            logger.info("Running 2D detection on frame %s", self.frame_id)
             det_2d = self.detector_2d.make_prediction(self.img_bgr)
             if self.visualize:
                 self.detector_2d.visualize_result(self.img_bgr, "maskrcnn_debug.png")
         else:
+            logger.debug("Loading 2D labels from: %s", label_path2d)
             #label_path = os.path.join(self.lbl2d_dir, self.frame_fmt % self.frame_id + ".lbl") #FIXME proposed change
             label_path2d = os.path.join(self.lbl2d_dir, "%06d.lbl" % self.frame_id)
             det_2d = torch.load(label_path2d)
         t4 = get_time()
-        print("2D detctor took %.3f seconds" % (t4 - t3))
+        logger.info("2D detector returned %d masks", det_2d["pred_masks"].shape[0] if "pred_masks" in det_2d else 0)
+        logger.info("2D detctor took %.3f seconds", t4 - t3)
         return det_2d
 
 
@@ -667,7 +690,7 @@ class FrameWithLiDAR:
             if self.visualize:
                 cuboids.append(cuboid)
         t2 = get_time()
-        print("Cropping, masking and transforming lidar points took %.3f seconds" % (t2 - t1))
+        logger.info("Cropping, masking and transforming lidar points took %.3f seconds", (t2 - t1))
         
         # Visualize point cloud and boxes
         if self.visualize and cuboids:
@@ -689,7 +712,7 @@ class FrameWithLiDAR:
         
         # Associate 2D and 3D detections
         if det_2d is None:
-            print("2D detector returned None.")
+            logger.warning("2D detector returned None.")
             return
 
         masks_2d = det_2d.get("pred_masks")
@@ -699,7 +722,7 @@ class FrameWithLiDAR:
 
         # If no 2D detections, return right away
         if masks_2d is None or masks_2d.shape[0] == 0:
-            print("No 2D detections found.")
+            logger.warning("No 2D detections found.")
             return
 
         # Initialize detected instance
@@ -726,10 +749,10 @@ class KITIISequence:
         self.rgb_dir = os.path.join(data_dir, "image_2/") #TODO
         self.velo_dir = os.path.join(data_dir, "velodyne/") #TODO
         self.calib_file = os.path.join(data_dir, "calib.txt")
-        print(f"[KITIISequence] Root: {self.root_dir}")
-        print(f"[KITIISequence] RGB: {self.rgb_dir}")
-        print(f"[KITIISequence] Velodyne: {self.velo_dir}")
-        print(f"[KITIISequence] Calib: {self.calib_file}")
+        logger.info(f"Root: {self.root_dir}")
+        logger.info(f"RGB: {self.rgb_dir}")
+        logger.info(f"Velodyne: {self.velo_dir}")
+        logger.info(f"Calib: {self.calib_file}")
         
         # Load calibration and detection modules
         self._load_calib()
