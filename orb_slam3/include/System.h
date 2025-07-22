@@ -232,6 +232,7 @@ public:
 	/* finalise the interpreter
 	*/
     inline void finalize() {
+		//py::gil_scoped_acquire acquire; // acquire GIL
 		// Clear Python objects before finalization
 		pySequence = py::object();
 		pyDecoder = py::object();
@@ -346,6 +347,7 @@ private:
     void check_mmseg();
     void check_mmdet();
     void check_mmdet3d();
+	void check_detectors();
 };
 
 }// namespace ORB_SLAM

@@ -135,9 +135,9 @@ int main(int argc, char **argv)
 
         // Seq loop
         //for(int ni=0; ni<nImages[seq]; ni++)
-        for(int ni=0; ni<10; ni++)
+		for(int ni=0; ni<1; ni++)
         {
-        	cout << ni << endl;
+        	//cout << ni << endl;
         	//cout << vstrImageLeft[seq][ni] << endl;  
         	//cout << vstrImageRight[seq][ni] << endl;
         	  	

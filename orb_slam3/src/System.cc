@@ -39,6 +39,7 @@
 #include <boost/archive/xml_oarchive.hpp>
 
 #include <libgen.h>
+#include <pybind11/pybind11.h>
 
 // COVINS
 //#include <comm/communicator.hpp> // for NO_LOOP_FINDER
@@ -99,12 +100,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 	}
 	
 	if(use_python) {
-		try {
-			/* Python environment verification */
-			if (Py_IsInitialized()) {
-				cerr << "[Pybind] Warning: Python interpreter already initialized!" << endl;
-			}
-			
+
 			setenv("OMP_NUM_THREADS", "1", 1);
 			setenv("OPENBLAS_NUM_THREADS", "1", 1);
 			setenv("MKL_NUM_THREADS", "1", 1);
@@ -114,6 +110,20 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 			setenv("NUMBA_THREADING_LAYER", "safe", 1);  // Use safe threading (safe, workqueue)
 			//setenv("PYTHONNOUSERSITE", "1", 1);  // Ignore user-site packages
 			setenv("OPEN3D_CPU_PARALLEL_POLICY", "0", 1);  // Disable TBB parallelization in Open3D
+			setenv("PYTORCH_NO_CUDA_MEMORY_CACHING", "1", 1);
+			setenv("CUDA_LAUNCH_BLOCKING", "1", 1);  // forces CUDA errors to appear synchronously
+			setenv("TORCH_USE_RTLD_GLOBAL", "1", 1);  // Helps with CUDA symbol loading
+
+			setenv("CUDA_MODULE_LOADING", "LAZY", 1);
+
+            setenv("PYTHONPATH", "/home/mrt/dev/object-slam/orb_slam3/Thirdparty/mmdetection3d", 1);
+			//setenv("PYTHONPATH", "/home/mrt/.local/lib/python3.8/site-packages", 1);
+
+		try {
+			/* Python environment verification */
+			if (Py_IsInitialized()) {
+				cerr << "[Pybind] Warning: Python interpreter already initialized!" << endl;
+			}
 			
 			std::cout << "[Pybind] Starting Python interpreter ..." << std::endl;
 			py::initialize_interpreter();
@@ -122,12 +132,19 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
             InitThread();  // This should be called right after interpreter initialization
 			
 			{
-				py::gil_scoped_acquire acquire;
+				//py::gil_scoped_acquire acquire;
 				
 				/* System checks */
 				
 				std::cout << "[Pybind] Import sys module ..." << std::endl;
 				py::module sys = py::module::import("sys");
+
+
+				std::string version = py::str(sys.attr("version"));
+				std::string executable = py::str(sys.attr("executable"));
+				py::print("sys.path =", sys.attr("path"));
+				std::cout << "[Pybind] Python version: " << version << std::endl;
+				std::cout << "[Pybind] Python executable: " << executable << std::endl;
 				
 				/* Add executable directory to path, avoid hard coded paths
 				   determines the directory where the current executable is located and 
@@ -169,6 +186,9 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 				/* mmdet3d */
 				check_mmdet3d();
 
+				/* custom detectors 2D/3D */
+				check_detectors();
+
 				/* Add current directory */
 				
 				std::cout << "[Pybind] Add current directory ..." << std::endl;
@@ -191,16 +211,48 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 				std::cout << "[Pybind] Getting deepsdf decoder ..." << std::endl;    
 				pyDecoder = io_utils.attr("get_decoder")(pyCfg);
 
-				std::cout << "[Pybind] Import python data sequence ..." << std::endl;
 				try {
+					py::gil_scoped_acquire acquire;  // Hold GIL for the entire block
+
+					// Enable fault handler for better crash logs
+					py::module::import("faulthandler").attr("enable")();
+
+					// Ensure Python path includes mmdetection3d
+					py::module::import("sys").attr("path").attr("append")("/home/mrt/dev/object-slam/orb_slam3/Thirdparty/mmdetection3d");
+
+					// Initialize PyTorch and CUDA
+					py::module torch = py::module::import("torch");
+					if (torch.attr("cuda").attr("is_available")().cast<bool>()) {
+						torch.attr("zeros")(1).attr("cuda")();  // Force CUDA init
+					} else {
+						std::cerr << "[WARNING] CUDA not available. Running on CPU." << std::endl;
+					}
+
+					// Verify Shapely
+					try {
+						py::module::import("shapely").attr("__version__");
+					} catch (...) {
+						std::cerr << "Shapely initialization failed" << std::endl;
+						exit(1);
+					}
+
+					// Initialize mmcv and mmdet3d
+					py::module::import("mmcv");
+					py::module::import("mmdet3d");
+					py::module::import("mmdet3d.models");
+
+					// Call the Python function
 					pySequence = py::module::import("reconstruct").attr("get_sequence")(strSequence, pyCfg);
 					if (pySequence.is_none()) {
 						std::cerr << "[SLAM] Error: get_sequence() returned None" << std::endl;
-						exit(-1); // or handle safely
+						exit(-1);
 					}
-					std::cout << "[Pybind] Sequence class: " << std::string(py::str(pySequence.get_type())) << std::endl;
+					std::cout << "[Pybind] Sequence class: " << py::str(pySequence.get_type()).cast<std::string>() << std::endl;
 				} catch (const py::error_already_set &e) {
-					std::cerr << "[Pybind] Python error while calling get_sequence():\n" << e.what() << std::endl;
+					std::cerr << "[Pybind] Python error:\n" << e.what() << std::endl;
+					// Re-throw or handle gracefully
+				} catch (const std::exception &e) {
+					std::cerr << "[C++] Exception: " << e.what() << std::endl;
 				}
 
 				/* Initialise */
@@ -413,18 +465,18 @@ void System::check_numpy() {
 	py::module numpy = py::module::import("numpy");
 	string numpy_ver = numpy.attr("__version__").cast<string>();
 	std::cout << "[Pybind] NumPy version: " << numpy_ver << std::endl;        
-	if (numpy_ver < "1.21.3") { // 1.21.3
-		throw runtime_error("[Pybind] NumPy version too old - requires >= 1.19.5");
-	}
+	//if (numpy_ver < "1.21.3") { // 1.21.3
+	//	throw runtime_error("[Pybind] NumPy version too old - requires >= 1.19.5");
+	//}
 }
 
 void System::check_open3d() {
 	py::module open3d = py::module::import("open3d");
 	string open3d_ver = open3d.attr("__version__").cast<string>();
 	std::cout << "[Pybind] Open3d version: " << open3d_ver << std::endl;        
-	if (open3d_ver != "0.18.0") { // 0.18.0
-		throw runtime_error("[Pybind] Requires PyTorch version == 0.18.0");
-	}
+	//if (open3d_ver != "0.18.0") { // 0.18.0
+	//	throw runtime_error("[Pybind] Requires PyTorch version == 0.18.0");
+	//}
 }
 
 void System::check_numba() {
@@ -484,6 +536,39 @@ void System::check_mmdet3d() {
 		throw std::runtime_error("[Pybind] Requires PyTorch version == 1.0.0rc6");
 	}
 }
+
+void System::check_detectors() {
+    std::cout << "[Pybind] Checking detectors..." << std::endl;
+
+    if (!Py_IsInitialized()) {
+        std::cerr << "[Pybind] Python not initialized!" << std::endl;
+        throw std::runtime_error("Python not initialized");
+    }
+
+    try {
+        py::gil_scoped_acquire acquire;
+
+        py::module_ detector2d = py::module_::import("reconstruct.detector2d");
+        py::object get_detector2d = detector2d.attr("get_detector2d");
+
+        py::module_ detector3d = py::module_::import("reconstruct.detector3d");
+        py::object get_detector3d = detector3d.attr("get_detector3d");
+
+        if (!py::isinstance<py::function>(get_detector2d) || 
+            !py::isinstance<py::function>(get_detector3d)) {
+            throw std::runtime_error("One or both functions are not callable.");
+        }
+
+        std::cout << "[Pybind] Detector functions found and valid." << std::endl;
+    } catch (const py::error_already_set& e) {
+        std::cerr << "[Pybind] Python error: " << e.what() << std::endl;
+        throw;
+    } catch (const std::exception& e) {
+        std::cerr << "[Pybind] Exception: " << e.what() << std::endl;
+        throw;
+    }
+}
+
 
 
 cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename)
