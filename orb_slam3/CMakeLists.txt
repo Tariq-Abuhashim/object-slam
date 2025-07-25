@@ -233,14 +233,21 @@ message(STATUS "Object SLAM build complete: ${PROJECT_NAME}")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR})
 
-add_executable(mono_inertial_kitti mono_inertial_kitti.cc)
-target_link_libraries(mono_inertial_kitti ${PROJECT_NAME})
+add_executable(test_pybind test_pybind.cpp)
+target_link_libraries(test_pybind ${PROJECT_NAME})
+
+add_executable(test_pangolin test_pangolin.cpp)
+target_link_libraries(test_pangolin ${PROJECT_NAME})
+
+add_executable(stereo_kitti stereo_kitti.cc)
+target_link_libraries(stereo_kitti ${PROJECT_NAME})
 
 add_executable(stereo_inertial_kitti stereo_inertial_kitti.cc)
 target_link_libraries(stereo_inertial_kitti ${PROJECT_NAME})
 
-add_executable(stereo_kitti stereo_kitti.cc)
-target_link_libraries(stereo_kitti ${PROJECT_NAME})
+
+add_executable(mono_inertial_kitti mono_inertial_kitti.cc)
+target_link_libraries(mono_inertial_kitti ${PROJECT_NAME})
 
 add_executable(dsp_slam dsp_slam.cc)
 target_link_libraries(dsp_slam ${PROJECT_NAME})
@@ -248,10 +255,8 @@ target_link_libraries(dsp_slam ${PROJECT_NAME})
 add_executable(mono_snark mono_snark.cc)
 target_link_libraries(mono_snark ${PROJECT_NAME})
 
-add_executable(test_pybind test_pybind.cpp)
-target_link_libraries(test_pybind ${PROJECT_NAME})
-
 #add_executable(reconstruct_frame reconstruct_frame.cpp)
 #target_link_libraries(reconstruct_frame ${PROJECT_NAME})
+
 #add_executable(image_from_bin image_from_bin.cc)
 #target_link_libraries(image_from_bin ${PROJECT_NAME})

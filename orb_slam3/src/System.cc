@@ -54,21 +54,17 @@ namespace ORB_SLAM3
 
 Verbose::eLevel Verbose::th = Verbose::VERBOSITY_NORMAL;
 
-System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
-               const bool bUseViewer, const int initFr, const string &strSequence, const string &strLoadingFile):
-    mSensor(sensor), mpViewer(static_cast<Viewer*>(NULL)), mbReset(false), mbResetActiveMap(false),
-    mbActivateLocalizationMode(false), mbDeactivateLocalizationMode(false)
+System::System(const string &strVocFile, const string &strSettingsFile, 
+			const eSensor sensor, const bool bUseViewer, const int initFr, 
+			const string &strSequence, const string &strLoadingFile):
+    mSensor(sensor), mpViewer(static_cast<Viewer*>(NULL)), mbReset(false), 
+    mbResetActiveMap(false), mbActivateLocalizationMode(false), 
+    mbDeactivateLocalizationMode(false), _use_python(false)
 {
     // Output welcome message
-    cout << endl <<
-    "ORB-SLAM3 Copyright (C) 2017-2020 Carlos Campos, Richard Elvira, Juan J. Gómez, José M.M. Montiel and Juan D. Tardós, University of Zaragoza." << endl <<
-    "ORB-SLAM2 Copyright (C) 2014-2016 Raúl Mur-Artal, José M.M. Montiel and Juan D. Tardós, University of Zaragoza." << endl <<
-    "This program comes with ABSOLUTELY NO WARRANTY;" << endl  <<
-    "This is free software, and you are welcome to redistribute it" << endl <<
-    "under certain conditions. See LICENSE.txt." << endl << endl;
-
-    cout << "[SLAM] Input sensor was set to: ";
-
+    cout << "\n";
+    cout << "ORB-SLAM3 Copyright (C) 2017-2020, University of Zaragoza.\n";
+    cout << "Input sensor was set to: ";
     if(mSensor==MONOCULAR)
         cout << "Monocular" << endl;
     else if(mSensor==STEREO)
@@ -87,19 +83,17 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 
     cv::FileStorage fsSettings(strSettingsFile.c_str(), cv::FileStorage::READ);
     if(!fsSettings.isOpened()) {
-       cerr << "[SLAM] Failed to open settings file at: " << strSettingsFile << endl;
+       cerr << "Failed to open settings file at: " << strSettingsFile << endl;
        exit(-1);
     }
 
     
 	/* Object-slam python stuff */
-	
-	bool use_python = true;
 	if(fsSettings["UsePython"].isInt()) {
-		 use_python = (int)fsSettings["UsePython"] != 0;
+		 this->_use_python = (int)fsSettings["UsePython"] != 0;
 	}
 	
-	if(use_python) {
+	if(this->_use_python) {
 
 			setenv("OMP_NUM_THREADS", "1", 1);
 			setenv("OPENBLAS_NUM_THREADS", "1", 1);
@@ -113,11 +107,8 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 			setenv("PYTORCH_NO_CUDA_MEMORY_CACHING", "1", 1);
 			setenv("CUDA_LAUNCH_BLOCKING", "1", 1);  // forces CUDA errors to appear synchronously
 			setenv("TORCH_USE_RTLD_GLOBAL", "1", 1);  // Helps with CUDA symbol loading
-
 			setenv("CUDA_MODULE_LOADING", "LAZY", 1);
-
-            setenv("PYTHONPATH", "/home/mrt/dev/object-slam/orb_slam3/Thirdparty/mmdetection3d", 1);
-			//setenv("PYTHONPATH", "/home/mrt/.local/lib/python3.8/site-packages", 1);
+            //setenv("PYTHONPATH", "./Thirdparty/mmdetection3d", 1);
 
 		try {
 			/* Python environment verification */
@@ -218,7 +209,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 					py::module::import("faulthandler").attr("enable")();
 
 					// Ensure Python path includes mmdetection3d
-					py::module::import("sys").attr("path").attr("append")("/home/mrt/dev/object-slam/orb_slam3/Thirdparty/mmdetection3d");
+					//sys.attr("path").attr("append")("./Thirdparty/mmdetection3d");
 
 					// Initialize PyTorch and CUDA
 					py::module torch = py::module::import("torch");
@@ -244,10 +235,12 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 					// Call the Python function
 					pySequence = py::module::import("reconstruct").attr("get_sequence")(strSequence, pyCfg);
 					if (pySequence.is_none()) {
-						std::cerr << "[SLAM] Error: get_sequence() returned None" << std::endl;
+						std::cerr << "Error: get_sequence() returned None" << std::endl;
 						exit(-1);
 					}
-					std::cout << "[Pybind] Sequence class: " << py::str(pySequence.get_type()).cast<std::string>() << std::endl;
+					std::cout << "[Pybind] Sequence class: " 
+							  << py::str(pySequence.get_type()).cast<std::string>() 
+							  << std::endl;
 				} catch (const py::error_already_set &e) {
 					std::cerr << "[Pybind] Python error:\n" << e.what() << std::endl;
 					// Re-throw or handle gracefully
@@ -282,7 +275,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 	}
 	
 	/* Load ORB Vocabulary */
-    cout << endl << "[SLAM] Loading ORB Vocabulary. This could take a while..." << endl;
+    cout << endl << "Loading ORB Vocabulary. This could take a while..." << endl;
     mpVocabulary = new ORBVocabulary();
     bool bVocLoad = false; // chose loading method based on file extension
     if (has_suffix(strVocFile, ".txt"))
@@ -291,11 +284,11 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         bVocLoad = mpVocabulary->loadFromBinaryFile(strVocFile);
     if(!bVocLoad)
     {
-        cerr << "[SLAM] Wrong path to vocabulary. " << endl;
-        cerr << "[SLAM] Falied to open at: " << strVocFile << endl;
+        cerr << "Wrong path to vocabulary. " << endl;
+        cerr << "Falied to open at: " << strVocFile << endl;
         exit(-1);
     }
-    cout << "[SLAM] Vocabulary loaded!" << endl << endl;
+    cout << "Vocabulary loaded!" << endl << endl;
 
     /* Create KeyFrame Database */
     mpKeyFrameDatabase = new KeyFrameDatabase(*mpVocabulary);
@@ -306,28 +299,41 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         mpAtlas->SetInertialSensor();
         
     /* Create Drawers. These are used by the Viewer */
-	cout << "[SLAM] Setting drawers ..." << endl;
+	cout << "Setting drawers ..." << endl;
 	cout << strSettingsFile << endl;
     mpFrameDrawer = new FrameDrawer(mpAtlas);
     mpMapDrawer = new MapDrawer(mpAtlas, strSettingsFile);
-    mpObjectDrawer = new ObjectDrawer(mpAtlas, mpMapDrawer, strSettingsFile); // FIXME freezes viewer with bStepByStep
+    mpObjectDrawer = new ObjectDrawer(mpAtlas, 
+    								mpMapDrawer, 
+    								strSettingsFile); // FIXME freezes viewer with bStepByStep
     mpMapDrawer->SetObjectDrawer(mpObjectDrawer);
     
     /* Initialize the Tracking thread */
     //(it will live in the main thread of execution, the one that called this constructor)
-    cout << "[SLAM] Seq. Name: " << strSequence << endl;
-	cout << "[SLAM] Setting tracker ..." << endl;
-    mpTracker = new Tracking(this, mpVocabulary, mpFrameDrawer, mpMapDrawer,
-                             mpAtlas, mpKeyFrameDatabase, strSettingsFile, mSensor, strSequence);
+    cout << "Seq. Name: " << strSequence << endl;
+	cout << "Setting tracker ..." << endl;
+    mpTracker = new Tracking(this, mpVocabulary, 
+    							mpFrameDrawer, mpMapDrawer,
+                             	mpAtlas, 
+                             	mpKeyFrameDatabase, 
+                             	strSettingsFile, 
+                             	mSensor, 
+                             	strSequence);
 
 	/* Initialize the Local Mapping thread and launch */
-	cout << "[SLAM] Setting local mapper ..." << endl;
+	cout << "Setting local mapper ..." << endl;
 	cout << strSettingsFile << endl;
-    mpLocalMapper = new LocalMapping(this, mpAtlas, mpObjectDrawer, mSensor==MONOCULAR || mSensor==IMU_MONOCULAR, mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO, strSequence);
-	mptLocalMapping = new thread(&ORB_SLAM3::LocalMapping::Run,mpLocalMapper);
+    mpLocalMapper = new LocalMapping(this, 
+    						mpAtlas, 
+    						mpObjectDrawer, 
+    						mSensor==MONOCULAR || mSensor==IMU_MONOCULAR, 
+    						mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO, 
+    						strSequence);
+	mptLocalMapping = new thread(&ORB_SLAM3::LocalMapping::Run, mpLocalMapper);
     mpLocalMapper->mThFarPoints = fsSettings["ThDepth"];
     if(mpLocalMapper->mThFarPoints!=0) {
-        cout << "[SLAM] Discard points further than " << mpLocalMapper->mThFarPoints << " m from current camera" << endl;
+        cout << "Discard points further than " 
+        	<< mpLocalMapper->mThFarPoints << " m from current camera" << endl;
         mpLocalMapper->mbFarPoints = true;
     }
     else {
@@ -335,8 +341,12 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 	}
         
     /* Initialize the object Mapping thread and launch */
+    // Object mapping thread is not active
 	//cout << "[SLAM] Setting objects mapper ..." << endl;
-    //mpObjectMapper = new ObjectMapping(this, mpAtlas, mpObjectDrawer, mSensor==MONOCULAR || mSensor==IMU_MONOCULAR, mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO, strSequence);
+    //mpObjectMapper = new ObjectMapping(this, mpAtlas, 
+    //                                           mpObjectDrawer, 
+    //                                           mSensor==MONOCULAR || mSensor==IMU_MONOCULAR, 
+    //                                           mSensor==IMU_MONOCULAR || mSensor==IMU_STEREO, strSequence);
     //mptObjectMapping = new thread(&ORB_SLAM3::ObjectMapping::Run, mpObjectMapper);
     
     /* Initialize the Loop Closing thread and launch  */
@@ -347,8 +357,12 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
         activeLC = static_cast<int>(fsSettings["loopClosing"]) != 0;
     }
 	if (mSensor == STEREO || mSensor==IMU_STEREO) {
-		cout << "[SLAM] Setting loop closer ..." << endl;
-    	mpLoopCloser = new LoopClosing(mpAtlas, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR, activeLC); // mSensor!=MONOCULAR);
+		cout << "Setting loop closer ..." << endl;
+    	mpLoopCloser = new LoopClosing(mpAtlas, 
+    								mpKeyFrameDatabase, 
+    								mpVocabulary, 
+    								mSensor!=MONOCULAR, 
+    								activeLC); // mSensor!=MONOCULAR);
     	mptLoopClosing = new thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser);
 	}
 	else {
@@ -357,7 +371,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 	
 	/* Set pointers between threads */
 
-	cout << "[SLAM] Set pointers between threads in mpTracker ..." << endl;
+	cout << "Set pointers between threads in mpTracker ..." << endl;
     mpTracker->SetLocalMapper(mpLocalMapper);
     #ifdef COVINS_MOD
     #ifndef NO_LOOP_FINDER
@@ -367,9 +381,9 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     mpTracker->SetLoopClosing(mpLoopCloser);
     #endif
 
-	cout << "[SLAM] Set pointers between threads in mpLocalMapper ..." << endl;
+	cout << "Set pointers between threads in mpLocalMapper ..." << endl;
     mpLocalMapper->SetTracker(mpTracker);
-//	mpLocalMapper->SetObjectMapper(mpObjectMapper); // Object-SLAM : new object processing thread
+//	mpLocalMapper->SetObjectMapper(mpObjectMapper); // Object-SLAM : new object processing thread (not active)
     #ifdef COVINS_MOD
     #ifndef NO_LOOP_FINDER
     mpLocalMapper->SetLoopCloser(mpLoopCloser);
@@ -378,7 +392,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     mpLocalMapper->SetLoopCloser(mpLoopCloser);
     #endif 
 
-	cout << "[SLAM] Set pointers between threads in mpLoopCloser ..." << endl;
+	cout << "Set pointers between threads in mpLoopCloser ..." << endl;
 	if (mpLoopCloser) {
 		mpLoopCloser->SetTracker(mpTracker);
     #ifdef COVINS_MOD
@@ -390,16 +404,21 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
     #endif
 	}
 	
-	// Object-SLAM
+	// Object-SLAM (Object mapping thread is not active)
 	//cout << "[SLAM] Set pointers between threads in mpObjectMapper ..." << endl;
 	//mpObjectMapper->SetTracker(mpTracker);
     //mpObjectMapper->SetLocalMapper(mpLocalMapper);	
 	
 	/* Initialize the Viewer thread and launch */
 	
-	cout << "starting the viewer ..." << endl;
+	cout << "Starting the viewer ..." << endl;
     if(bUseViewer) {
-        mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpObjectDrawer, mpTracker,strSettingsFile);
+        mpViewer = new Viewer(this, mpFrameDrawer,
+        						mpMapDrawer,
+        						mpObjectDrawer, 
+        						mpTracker,strSettingsFile);
+       	// Ensure viewer is fully initialized before starting thread
+		std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
         mptViewer = new thread(&Viewer::Run, mpViewer);
         mpTracker->SetViewer(mpViewer);
 		if (mpLoopCloser)
@@ -410,16 +429,16 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
 	/* Set communicator and the backend */
 	
     #ifdef COVINS_MOD
-    std::cout << ">>> COVINS: Initialize communicator" << std::endl;
+    std::cout << "Initialize communicator" << std::endl;
     comm_.reset(new Communicator(covins_params::sys::server_ip,covins_params::sys::port,mpAtlas));
-    std::cout << ">>> COVINS: Start comm thread" << std::endl;
+    std::cout << "Start comm thread" << std::endl;
     thread_comm_.reset(new std::thread(&Communicator::Run,comm_));
     // Get ID from back-end
-    std::cout << ">>> COVINS: wait for back-end response" << std::endl;
+    std::cout << "Wait for back-end response" << std::endl;
     while(comm_->GetClientId() < 0){
         usleep(1000); //wait until ID is received from server
     }
-    std::cout << ">>> COVINS: client id: " << comm_->GetClientId() << std::endl;
+    std::cout << "Client id: " << comm_->GetClientId() << std::endl;
     mpLocalMapper->SetComm(comm_); // Pass to mapping
     #endif
     
@@ -571,11 +590,13 @@ void System::check_detectors() {
 
 
 
-cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename)
+cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, 
+							const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename)
 {
     if(mSensor!=STEREO && mSensor!=IMU_STEREO)
     {
-        cerr << "ERROR: you called TrackStereo but input sensor was not set to Stereo nor Stereo-Inertial." << endl;
+        cerr << "ERROR: you called TrackStereo but input sensor was not set to Stereo nor Stereo-Inertial." 
+        	<< endl;
         exit(-1);
     }   
 
@@ -634,7 +655,8 @@ cv::Mat System::TrackStereo(const cv::Mat &imLeft, const cv::Mat &imRight, const
     return Tcw;
 }
 
-cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const double &timestamp, string filename)
+cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, 
+						const double &timestamp, string filename)
 {
     if(mSensor!=RGBD)
     {
@@ -692,7 +714,8 @@ cv::Mat System::TrackRGBD(const cv::Mat &im, const cv::Mat &depthmap, const doub
     return Tcw;
 }
 
-cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp, const vector<IMU::Point>& vImuMeas, string filename)
+cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp, 
+ 								const vector<IMU::Point>& vImuMeas, string filename)
 {
     if(mSensor!=MONOCULAR && mSensor!=IMU_MONOCULAR)
     {
@@ -933,7 +956,9 @@ void System::SaveTrajectoryTUM(const string &filename)
 
         vector<float> q = Converter::toQuaternion(Rwc);
 
-        f << setprecision(6) << *lT << " " <<  setprecision(9) << twc.at<float>(0) << " " << twc.at<float>(1) << " " << twc.at<float>(2) << " " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
+        f << setprecision(6) << *lT << " " <<  setprecision(9) 
+        << twc.at<float>(0) << " " << twc.at<float>(1) << " " << twc.at<float>(2) << " " 
+        << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
     }
     f.close();
     // cout << endl << "trajectory saved!" << endl;
@@ -964,8 +989,9 @@ void System::SaveKeyFrameTrajectoryTUM(const string &filename)
         cv::Mat R = pKF->GetRotation().t();
         vector<float> q = Converter::toQuaternion(R);
         cv::Mat t = pKF->GetCameraCenter();
-        f << setprecision(6) << pKF->mTimeStamp << setprecision(7) << " " << t.at<float>(0) << " " << t.at<float>(1) << " " << t.at<float>(2)
-          << " " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
+        f << setprecision(6) << pKF->mTimeStamp << setprecision(7) << " " 
+        << t.at<float>(0) << " " << t.at<float>(1) << " " << t.at<float>(2)
+		<< " " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
 
     }
 
@@ -1053,7 +1079,9 @@ void System::SaveTrajectoryEuRoC(const string &filename)
             cv::Mat Rwb = Tbw.rowRange(0,3).colRange(0,3).t();
             cv::Mat twb = -Rwb*Tbw.rowRange(0,3).col(3);
             vector<float> q = Converter::toQuaternion(Rwb);
-            f << setprecision(6) << 1e9*(*lT) << " " <<  setprecision(9) << twb.at<float>(0) << " " << twb.at<float>(1) << " " << twb.at<float>(2) << " " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
+            f << setprecision(6) << 1e9*(*lT) << " " <<  setprecision(9) 
+            << twb.at<float>(0) << " " << twb.at<float>(1) << " " << twb.at<float>(2) << " " 
+            << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
         }
         else
         {
@@ -1061,7 +1089,9 @@ void System::SaveTrajectoryEuRoC(const string &filename)
             cv::Mat Rwc = Tcw.rowRange(0,3).colRange(0,3).t();
             cv::Mat twc = -Rwc*Tcw.rowRange(0,3).col(3);
             vector<float> q = Converter::toQuaternion(Rwc);
-            f << setprecision(6) << 1e9*(*lT) << " " <<  setprecision(9) << twc.at<float>(0) << " " << twc.at<float>(1) << " " << twc.at<float>(2) << " " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
+            f << setprecision(6) << 1e9*(*lT) << " " <<  setprecision(9) 
+            << twc.at<float>(0) << " " << twc.at<float>(1) << " " << twc.at<float>(2) << " " 
+            << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
         }
 
     }
@@ -1107,7 +1137,10 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
             cv::Mat R = pKF->GetImuRotation().t();
             vector<float> q = Converter::toQuaternion(R);
             cv::Mat twb = pKF->GetImuPosition();
-            f << setprecision(6) << 1e9*pKF->mTimeStamp  << " " <<  setprecision(9) << twb.at<float>(0) << " " << twb.at<float>(1) << " " << twb.at<float>(2) << " " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
+            f << setprecision(6) << 1e9*pKF->mTimeStamp  << " " 
+            << setprecision(9) 
+            << twb.at<float>(0) << " " << twb.at<float>(1) << " " << twb.at<float>(2) << " " 
+            << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
 
         }
         else
@@ -1115,7 +1148,10 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
             cv::Mat R = pKF->GetRotation();
             vector<float> q = Converter::toQuaternion(R);
             cv::Mat t = pKF->GetCameraCenter();
-            f << setprecision(6) << 1e9*pKF->mTimeStamp << " " <<  setprecision(9) << t.at<float>(0) << " " << t.at<float>(1) << " " << t.at<float>(2) << " " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
+            f << setprecision(6) << 1e9*pKF->mTimeStamp << " " 
+            << setprecision(9) 
+            << t.at<float>(0) << " " << t.at<float>(1) << " " << t.at<float>(2) << " " 
+            << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
         }
     }
     f.close();
@@ -1149,7 +1185,8 @@ void System::SaveTrajectoryKITTI(const string &filename)
     // which is true when tracking failed (lbL).
     list<ORB_SLAM3::KeyFrame*>::iterator lRit = mpTracker->mlpReferences.begin();
     list<double>::iterator lT = mpTracker->mlFrameTimes.begin();
-    for(list<cv::Mat>::iterator lit=mpTracker->mlRelativeFramePoses.begin(), lend=mpTracker->mlRelativeFramePoses.end();lit!=lend;lit++, lRit++, lT++)
+    for(list<cv::Mat>::iterator lit=mpTracker->mlRelativeFramePoses.begin(), 
+    	lend=mpTracker->mlRelativeFramePoses.end();lit!=lend;lit++, lRit++, lT++)
     {
         ORB_SLAM3::KeyFrame* pKF = *lRit;
 
@@ -1167,9 +1204,10 @@ void System::SaveTrajectoryKITTI(const string &filename)
         cv::Mat Rwc = Tcw.rowRange(0,3).colRange(0,3).t();
         cv::Mat twc = -Rwc*Tcw.rowRange(0,3).col(3);
 
-        f << setprecision(9) << Rwc.at<float>(0,0) << " " << Rwc.at<float>(0,1)  << " " << Rwc.at<float>(0,2) << " "  << twc.at<float>(0) << " " <<
-             Rwc.at<float>(1,0) << " " << Rwc.at<float>(1,1)  << " " << Rwc.at<float>(1,2) << " "  << twc.at<float>(1) << " " <<
-             Rwc.at<float>(2,0) << " " << Rwc.at<float>(2,1)  << " " << Rwc.at<float>(2,2) << " "  << twc.at<float>(2) << endl;
+        f << setprecision(9) 
+        << Rwc.at<float>(0,0)<<" "<<Rwc.at<float>(0,1)<<" "<<Rwc.at<float>(0,2)<<" "<<twc.at<float>(0)<<" "<<
+           Rwc.at<float>(1,0)<<" "<<Rwc.at<float>(1,1)<<" "<<Rwc.at<float>(1,2)<<" "<<twc.at<float>(1)<<" "<<
+           Rwc.at<float>(2,0)<<" "<<Rwc.at<float>(2,1)<<" "<<Rwc.at<float>(2,2)<<" "<<twc.at<float>(2)<<endl;
     }
     f.close();
 }

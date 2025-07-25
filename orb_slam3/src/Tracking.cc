@@ -126,12 +126,14 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     vnKeyFramesLM.clear();
     vnMapPointsLM.clear();
 
-    // Object-SLAM
-    if (sensor == System::MONOCULAR)
-    {
-        maskErrosion = fSettings["Objects.maskErrosion"];
-    }
-    DetectorConfigFile = fSettings["DetectorConfigPath"].string();
+	if (mpSystem->_use_python) {
+		// Object-SLAM
+		if (sensor == System::MONOCULAR)
+		{
+		    maskErrosion = fSettings["Objects.maskErrosion"];
+		}
+		DetectorConfigFile = fSettings["DetectorConfigPath"].string();
+	}
 }
 
 #ifdef REGISTER_TIMES
@@ -2271,7 +2273,9 @@ void Tracking::StereoInitialization()
         KeyFrame* pKFini = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
 
         // Object-SLAM
-        GetObjectDetectionsLiDAR(pKFini);
+        if (mpSystem->_use_python) {
+        	GetObjectDetectionsLiDAR(pKFini);
+        }
 
         // Insert KeyFrame in the map
         mpAtlas->AddKeyFrame(pKFini);
@@ -3118,50 +3122,52 @@ void Tracking::CreateNewKeyFrame()
     KeyFrame* pKF = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
 
     // Object-SLAM
-    if (mSensor == System::STEREO || mSensor == System::IMU_STEREO)
-    {
-        GetObjectDetectionsLiDAR(pKF);
-        if (!mpAtlas->GetAllMapObjects().empty())
-        {
-            ObjectDataAssociation(pKF);
-        }
-    }
-    else if (mSensor == System::MONOCULAR || mSensor == System::IMU_MONOCULAR)
-    {
-        std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
-
-		bool WITH_LIDAR = true; // FIXME this needs to be outside parameter or check for lidar data
-
-		// Object-SLAM
-		if (WITH_LIDAR)
+    if (mpSystem->_use_python) {
+		if (mSensor == System::STEREO || mSensor == System::IMU_STEREO)
 		{
-			//if (mState == Tracking::OK && mpAtlas->isImuInitialized())
-			//if (mState != Tracking::NOT_INITIALIZED)
-			if (mpAtlas->isImuInitialized())
-			{
-				GetObjectDetectionsLiDAR(pKF);
-				if (!mpAtlas->GetAllMapObjects().empty())
-				{
-				    ObjectDataAssociation(pKF);
-				}
-			}
-		}
-		else
-		{
-		    GetObjectDetectionsMono(pKF);
-		    //DetectObjects(pKF);
+		    GetObjectDetectionsLiDAR(pKF);
 		    if (!mpAtlas->GetAllMapObjects().empty())
 		    {
-		        // AssociateObjects(pKF);
-		        AssociateObjectsByProjection(pKF);
+		        ObjectDataAssociation(pKF);
 		    }
 		}
+		else if (mSensor == System::MONOCULAR || mSensor == System::IMU_MONOCULAR)
+		{
+		    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 
-        std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+			bool WITH_LIDAR = true; // FIXME this needs to be outside parameter or check for lidar data
 
-        double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
-        //cout << "Object detection takes " << ttrack << endl;
-    }
+			// Object-SLAM
+			if (WITH_LIDAR)
+			{
+				//if (mState == Tracking::OK && mpAtlas->isImuInitialized())
+				//if (mState != Tracking::NOT_INITIALIZED)
+				if (mpAtlas->isImuInitialized())
+				{
+					GetObjectDetectionsLiDAR(pKF);
+					if (!mpAtlas->GetAllMapObjects().empty())
+					{
+						ObjectDataAssociation(pKF);
+					}
+				}
+			}
+			else
+			{
+				GetObjectDetectionsMono(pKF);
+				//DetectObjects(pKF);
+				if (!mpAtlas->GetAllMapObjects().empty())
+				{
+				    // AssociateObjects(pKF);
+				    AssociateObjectsByProjection(pKF);
+				}
+			}
+
+		    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+
+		    double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+		    //cout << "Object detection takes " << ttrack << endl;
+		}
+	}
 
     if(mpAtlas->isImuInitialized())
         pKF->bImu = true;

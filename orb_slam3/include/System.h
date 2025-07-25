@@ -232,20 +232,23 @@ public:
 	/* finalise the interpreter
 	*/
     inline void finalize() {
-		//py::gil_scoped_acquire acquire; // acquire GIL
-		// Clear Python objects before finalization
-		pySequence = py::object();
-		pyDecoder = py::object();
-		pyCfg = py::object();
-    			
-		// Finalize from main thread
-		py::finalize_interpreter();
+    	if (Py_IsInitialized()) {
+			//py::gil_scoped_acquire acquire; // acquire GIL
+			// Clear Python objects before finalization
+			pySequence = py::object();
+			pyDecoder = py::object();
+			pyCfg = py::object();
+					
+			// Finalize from main thread
+			py::finalize_interpreter();
 		
-		cout << "[SLAM] Python interpreter finalized" << endl;
+			cout << "[SLAM] Python interpreter finalized" << endl;
+		}
 	};
     py::object pyCfg;
     py::object pyDecoder;
     py::object pySequence;
+    bool _use_python;
 
 	/* Communications */
 	boost::asio::ip::tcp::socket* socket_;

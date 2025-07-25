@@ -60,7 +60,8 @@ sudo apt-get install -y \
   libxkbcommon-dev \
   wayland-protocols \
   libgl1-mesa-dev \
-  libpython3-dev
+  libpython3-dev \
+  libepoxy-dev
 
 # -------------------------------------------------------------
 # Optional: Build third-party dependencies
@@ -82,11 +83,17 @@ if [[ $* == *--build-dependencies* ]]; then
   cd ../..
 
   highlight "Installing Pangolin ..."
-  #git_clone git clone https://github.com/stevenlovegrove/Pangolin.git Pangolin
+  git_clone git clone --recursive https://github.com/stevenlovegrove/Pangolin.git Pangolin
   cd Pangolin
+  git checkout v0.9
   mkdir -p build
   cd build
-  cmake ..
+  cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=ON \
+    -DBUILD_TESTS=OFF \
+    -DBUILD_EXAMPLES=OFF #\
+    #-DBUILD_PANGOLIN_PYTHON=OFF  # Optional: Disable Python if not needed
   make -j$(nproc)
   Pangolin_DIR=$(pwd)
   cd ../..

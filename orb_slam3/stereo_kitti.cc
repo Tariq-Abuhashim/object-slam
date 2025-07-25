@@ -39,8 +39,10 @@ int main(int argc, char **argv)
 {
 	if(argc < 4)
 	{
-		std::cerr << std::endl 
-		          << "Usage: ./stereo_kitti "
+		std::cerr << std::endl << "Usage: " << std::endl;
+		          
+		std::cerr << "./stereo_inertial_kitti "
+		          << "Vocabulary/ORBvoc.txt "
 		          << "<path_to_vocabulary> "
 		          << "<path_to_settings> "
 		          << "<path_to_seq1> "
@@ -58,14 +60,21 @@ int main(int argc, char **argv)
 		std::cerr << "./stereo_kitti "
 		          << "Vocabulary/ORBvoc.txt "
 		          << "/media/mrt/Whale/data/kitti/2011_09_30/KITTI.yaml "
-		          << "/media/mrt/Whale/data/kitti/2011_09_30"
+		          << "/media/mrt/Whale/data/kitti/2011_09_30/2011_09_30_drive_0018_sync"
 		          << std::endl;
 
 		std::cerr << std::endl << "Debug mode (then type <run>):" << std::endl;
 		std::cerr << "gdb --args ./stereo_kitti "
-		          << "Vocabulary/ORBvoc.txt "
-		          << "/media/mrt/Whale/data/kitti/07/KITTI04-12.yaml "
-		          << "/media/mrt/Whale/data/kitti/07/"
+		          << "<path_to_vocabulary> "
+		          << "<path_to_settings> "
+		          << "<path_to_seq1> "
+		          << std::endl;
+		          
+		std::cerr << std::endl << "Find memory leaks:" << std::endl;
+		std::cerr << "valgrind ./stereo_kitti "
+		          << "<path_to_vocabulary> "
+		          << "<path_to_settings> "
+		          << "<path_to_seq1> "
 		          << std::endl;
 
 		return 1;
@@ -83,25 +92,16 @@ int main(int argc, char **argv)
         file_name = string(argv[argc-1]);
         cout << "[STEREO_KITTI] file name: " << file_name << endl;
     }
-    
-  	cv::FileStorage fSettings(settingsFile, cv::FileStorage::READ);
-	const string day = fSettings["day"];
-	const string seqnum = fSettings["seq"];
 
-    // Load all sequences:
+    /* Load all sequences: */
     int seq;
-    vector< vector<string> > vstrImageLeft;
-    vector< vector<string> > vstrImageRight;
-    vector< vector<double> > vTimestampsCam;
-    vector<int> nImages;
-    vstrImageLeft.resize(num_seq);
-    vstrImageRight.resize(num_seq);
-    vTimestampsCam.resize(num_seq);
-    nImages.resize(num_seq);
-
+    // Images
+    vector< vector<double> > vTimestampsCam; vTimestampsCam.resize(num_seq);
+    vector< vector<string> > vstrImageLeft; vstrImageLeft.resize(num_seq);
+    vector< vector<string> > vstrImageRight; vstrImageRight.resize(num_seq);
+    vector<int> nImages; nImages.resize(num_seq);
 	cout << endl << "-------" << endl;
     cout.precision(17);
-
     int tot_images = 0;
     for (seq = 0; seq<num_seq; seq++)
     {
@@ -119,7 +119,12 @@ int main(int argc, char **argv)
 	cout << endl << "-------" << endl;
 	
 	// Create SLAM system. It initializes all system threads and gets ready to process frames.
-	ORB_SLAM3::System SLAM(argv[1], argv[2], ORB_SLAM3::System::STEREO, false, 0, argv[3]);
+	ORB_SLAM3::System SLAM(vocabFile, 
+						settingsFile, 
+						ORB_SLAM3::System::STEREO, 
+						true, 
+						0, 
+						argv[3]); // FIXME if argv[3] is sequnce path, how to set for (num_seq>1)
 
     // Vector for tracking time statistics
     vector<float> vTimesTrack;
@@ -163,7 +168,7 @@ int main(int argc, char **argv)
             std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
             
             // Pass the images to the SLAM system
-            //SLAM.TrackStereo(imLeft,imRight,tframe); //,vImuMeas);
+            SLAM.TrackStereo(imLeft,imRight,tframe);
             
             std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
             t_track = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t2-t1).count();
@@ -189,6 +194,26 @@ int main(int argc, char **argv)
 			cout << "[STEREO_KITTI] Changing the dataset" << endl;
 			//SLAM.ChangeDataset();
 		}
+    }
+    
+    // Wait viewer
+    cv::waitKey(0);
+    
+    // Stop all threads
+    SLAM.Shutdown();
+    
+    // Save camera trajectory
+    if (bFileName)
+    {
+        const string kf_file =  "kf_" + string(argv[argc-1]) + ".txt";
+        const string f_file =  "f_" + string(argv[argc-1]) + ".txt";
+        SLAM.SaveTrajectoryEuRoC(f_file);
+        SLAM.SaveKeyFrameTrajectoryEuRoC(kf_file);
+    }
+    else
+    {
+        SLAM.SaveTrajectoryEuRoC("CameraTrajectory.txt");
+        SLAM.SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
     }
 
     return 0;
@@ -249,7 +274,8 @@ void LoadImages(const string &pathSeq, vector<string> &vstrImageLeft,
     }
     
     /* fake timestamps using fps
-    	this is not useful if IMU-Image synchronisation is needed*/
+    	this is not useful if IMU-Image synchronisation is needed
+    */
 /*    const float fps = 20.;
     const float dt = 1. / fps;
     float t = 0.;

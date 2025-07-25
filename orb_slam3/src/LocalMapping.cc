@@ -36,11 +36,14 @@
 namespace ORB_SLAM3
 {
 
-LocalMapping::LocalMapping(System* pSys, Atlas *pAtlas, ObjectDrawer* pObjectDrawer, const float bMonocular, bool bInertial, const string &_strSeqName):
-    mpSystem(pSys), mbMonocular(bMonocular), mbInertial(bInertial), mbResetRequested(false), mbResetRequestedActiveMap(false), mbFinishRequested(false), mbFinished(true), 
+LocalMapping::LocalMapping(System* pSys, Atlas *pAtlas, ObjectDrawer* pObjectDrawer, 
+							const float bMonocular, bool bInertial, const string &_strSeqName):
+    mpSystem(pSys), mbMonocular(bMonocular), mbInertial(bInertial), 
+    mbResetRequested(false), mbResetRequestedActiveMap(false), mbFinishRequested(false), mbFinished(true), 
     mpAtlas(pAtlas), mpObjectDrawer(pObjectDrawer), bInitializing(false),
     mbAbortBA(false), mbStopped(false), mbStopRequested(false), mbNotStop(false), mbAcceptKeyFrames(true),
-    mbNewInit(false), mIdxInit(0), mScale(1.0), mInitSect(0), mbNotBA1(true), mbNotBA2(true), infoInertial(Eigen::MatrixXd::Zero(9,9))
+    mbNewInit(false), mIdxInit(0), mScale(1.0), mInitSect(0), mbNotBA1(true), mbNotBA2(true), 
+    infoInertial(Eigen::MatrixXd::Zero(9,9))
 {
     mnMatchesInliers = 0;
 
@@ -57,11 +60,15 @@ LocalMapping::LocalMapping(System* pSys, Atlas *pAtlas, ObjectDrawer* pObjectDra
 #endif
 
 	// Object-SLAM
-	py::module optim  = py::module::import("reconstruct.optimizer");
-    pyOptimizer = optim.attr("Optimizer")(pSys->pyDecoder, pSys->pyCfg);
-    pyMeshExtractor = optim.attr("MeshExtractor")(pSys->pyDecoder, pSys->pyCfg.attr("optimizer").attr("code_len"), pSys->pyCfg.attr("voxels_dim"));
-    //mpLastKeyFrame = static_cast<KeyFrame*>(NULL);
-    nLastReconKFID = 0;
+	if (mpSystem->_use_python) {
+		py::module optim  = py::module::import("reconstruct.optimizer");
+		pyOptimizer = optim.attr("Optimizer")(pSys->pyDecoder, pSys->pyCfg);
+		pyMeshExtractor = optim.attr("MeshExtractor")(pSys->pyDecoder, 
+													pSys->pyCfg.attr("optimizer").attr("code_len"), 
+													pSys->pyCfg.attr("voxels_dim"));
+		//mpLastKeyFrame = static_cast<KeyFrame*>(NULL);
+		nLastReconKFID = 0;
+	}
 
 }
 
@@ -129,48 +136,52 @@ void LocalMapping::Run()
             vdMPCreation_ms.push_back(timeMPCreation);
 #endif
 
-			// Object-SLAM : send keyframe to object processing thread
+			// Object-SLAM : send keyframe to object processing thread (not in use)
 			//mpObjectMapper->InsertKeyFrame(mpCurrentKeyFrame);
 
 			// Object-SLAM
 			bool WITH_LIDAR = true;
-			if (mpTracker->mSensor == System::STEREO || mpTracker->mSensor == System::IMU_STEREO)
-            {
-                // Get new observations for map objects
-                GetNewObservations();
-                // Recent MapObjects Culling
-                MapObjectCulling(); // FIXME
-                // Create new MapObjects
-                CreateNewMapObjects(); // FIXME
-            }
-            else if (mpTracker->mSensor == System::MONOCULAR || mpTracker->mSensor == System::IMU_MONOCULAR)
-            {
-                //if (mpTracker->mState != Tracking::NOT_INITIALIZED)
-				//if (mpAtlas->KeyFramesInMap()>50) // FIXME need to link to IMU initialisation too
-                {
-					// for monocular simulation with inertial and lidar (only create object after IMU is initialised)
-					if (WITH_LIDAR)
-					{
-						//if (mpLastKeyFrame->GetMap()->GetIniertialBA2())
-						if (mpAtlas->isImuInitialized())
+			if (mpSystem->_use_python) {
+				if (WITH_LIDAR) {
+					if (mpTracker->mSensor == System::STEREO || mpTracker->mSensor == System::IMU_STEREO)
+				    {
+				        // Get new observations for map objects
+				        GetNewObservations();
+				        // Recent MapObjects Culling
+				        MapObjectCulling(); // FIXME
+				        // Create new MapObjects
+				        CreateNewMapObjects(); // FIXME
+				    }
+				}
+		        else if (mpTracker->mSensor == System::MONOCULAR || mpTracker->mSensor == System::IMU_MONOCULAR)
+		        {
+		            //if (mpTracker->mState != Tracking::NOT_INITIALIZED)
+					//if (mpAtlas->KeyFramesInMap()>50) // FIXME need to link to IMU initialisation too
+		            {
+						// for monocular simulation with inertial and lidar (only create object after IMU is initialised)
+						if (WITH_LIDAR)
 						{
-							// Get new observations for map objects
-		            		GetNewObservations();
-		            		// Recent MapObjects Culling
-		            		MapObjectCulling();
-		            		// Create new MapObjects
-		            		CreateNewMapObjects();
+							//if (mpLastKeyFrame->GetMap()->GetIniertialBA2())
+							if (mpAtlas->isImuInitialized())
+							{
+								// Get new observations for map objects
+				        		GetNewObservations();
+				        		// Recent MapObjects Culling
+				        		MapObjectCulling();
+				        		// Create new MapObjects
+				        		CreateNewMapObjects();
+							}
 						}
-					}
-					else
-					{	// for monocular only simulation
-		                if (mpAtlas->GetAllMapObjects().empty())
-		                    CreateNewObjectsFromDetections();
-		                // reconstruction
-		                ProcessDetectedObjects();
-					}
-                }
-            }
+						else
+						{	// for monocular only simulation
+				            if (mpAtlas->GetAllMapObjects().empty())
+				                CreateNewObjectsFromDetections();
+				            // reconstruction
+				            ProcessDetectedObjects();
+						}
+		            }
+		        }
+		    }
 
             bool b_doneLBA = false;
             int num_FixedKF_BA = 0;
@@ -207,15 +218,49 @@ void LocalMapping::Run()
 						Verbose::PrintMess("LM: LocalJointInertialBA", Verbose::VERBOSITY_DEBUG);
 #ifdef COVINS_MOD
                         vector<KeyFrame*> local_kfs;
-                        //Optimizer::LocalInertialBA(mpCurrentKeyFrame, &mbAbortBA, mpCurrentKeyFrame->GetMap(),local_kfs,num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA, bLarge, !mpCurrentKeyFrame->GetMap()->GetIniertialBA2());
-                        Optimizer::LocalJointInertialBA(mpCurrentKeyFrame, &mbAbortBA, mpCurrentKeyFrame->GetMap(),local_kfs,num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA, bLarge, !mpCurrentKeyFrame->GetMap()->GetIniertialBA2());
+/*                        Optimizer::LocalInertialBA(mpCurrentKeyFrame, 
+                        								&mbAbortBA, 
+                        								mpCurrentKeyFrame->GetMap(),
+                        								local_kfs,
+                        								num_FixedKF_BA,
+                        								num_OptKF_BA,
+                        								num_MPs_BA,
+                        								num_edges_BA, 
+                        								bLarge, 
+                        								!mpCurrentKeyFrame->GetMap()->GetIniertialBA2()); */
+                        Optimizer::LocalJointInertialBA(mpCurrentKeyFrame, 
+                        								&mbAbortBA, 
+                        								mpCurrentKeyFrame->GetMap(),
+                        								local_kfs,
+                        								num_FixedKF_BA,
+                        								num_OptKF_BA,
+                        								num_MPs_BA,
+                        								num_edges_BA, 
+                        								bLarge, 
+                        								!mpCurrentKeyFrame->GetMap()->GetIniertialBA2());
                         if(covins_params::comm::send_updates && this->IsCommInitialized()) {
                             if(local_kfs.size() <= covins_params::comm::update_window_size) kf_out_buffer_.insert(local_kfs.begin(),local_kfs.end());
                             else kf_out_buffer_.insert(local_kfs.begin(),local_kfs.begin() + covins_params::comm::update_window_size);
                         }
 #else
-                        //Optimizer::LocalInertialBA(mpCurrentKeyFrame, &mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA, bLarge, !mpCurrentKeyFrame->GetMap()->GetIniertialBA2());
-                        Optimizer::LocalJointInertialBA(mpCurrentKeyFrame, &mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA, bLarge, !mpCurrentKeyFrame->GetMap()->GetIniertialBA2());
+/*						Optimizer::LocalInertialBA(mpCurrentKeyFrame, 
+														&mbAbortBA, 
+														mpCurrentKeyFrame->GetMap(),
+														num_FixedKF_BA,
+														num_OptKF_BA,
+														num_MPs_BA,
+														num_edges_BA, 
+														bLarge, 
+														!mpCurrentKeyFrame->GetMap()->GetIniertialBA2()); */
+                        Optimizer::LocalJointInertialBA(mpCurrentKeyFrame, 
+                        								&mbAbortBA, 
+                        								mpCurrentKeyFrame->GetMap(),
+                        								num_FixedKF_BA,
+                        								num_OptKF_BA,
+                        								num_MPs_BA,
+                        								num_edges_BA, 
+                        								bLarge, 
+                        								!mpCurrentKeyFrame->GetMap()->GetIniertialBA2());
 #endif
                         b_doneLBA = true;
                     }
@@ -224,8 +269,22 @@ void LocalMapping::Run()
 						Verbose::PrintMess("LM: LocalJointBundleAdjustment", Verbose::VERBOSITY_DEBUG);
 #ifdef COVINS_MOD
                         list<KeyFrame*> local_kfs;
-                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA,local_kfs);
-                        //Optimizer::LocalJointBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA,local_kfs);
+                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,
+                        								&mbAbortBA, 
+                        								mpCurrentKeyFrame->GetMap(),
+                        								num_FixedKF_BA,
+                        								num_OptKF_BA,
+                        								num_MPs_BA,
+                        								num_edges_BA,
+                        								local_kfs);
+/*						Optimizer::LocalJointBundleAdjustment(mpCurrentKeyFrame,
+														&mbAbortBA, 
+														mpCurrentKeyFrame->GetMap(),
+														num_FixedKF_BA,
+														num_OptKF_BA,
+														num_MPs_BA,
+														num_edges_BA,
+														local_kfs); */
 						if(covins_params::comm::send_updates && this->IsCommInitialized()) {
 							if(local_kfs.size() <= covins_params::comm::update_window_size) {
 								kf_out_buffer_.insert(local_kfs.begin(),local_kfs.end());
@@ -240,8 +299,20 @@ void LocalMapping::Run()
                             }
                         };
 #else
-                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA);
-						//Optimizer::LocalJointBundleAdjustment(mpCurrentKeyFrame,&mbAbortBA, mpCurrentKeyFrame->GetMap(),num_FixedKF_BA,num_OptKF_BA,num_MPs_BA,num_edges_BA);
+                        Optimizer::LocalBundleAdjustment(mpCurrentKeyFrame,
+                        								&mbAbortBA, 
+                        								mpCurrentKeyFrame->GetMap(),
+                        								num_FixedKF_BA,
+                        								num_OptKF_BA,
+                        								num_MPs_BA,
+                        								num_edges_BA);
+/*						Optimizer::LocalJointBundleAdjustment(mpCurrentKeyFrame,
+														&mbAbortBA, 
+														mpCurrentKeyFrame->GetMap(),
+														num_FixedKF_BA,
+														num_OptKF_BA,
+														num_MPs_BA,
+														num_edges_BA); */
 #endif
                         b_doneLBA = true;
                     }
@@ -292,7 +363,8 @@ void LocalMapping::Run()
 
                 if ((mTinit<100.0f) && mbInertial) // 100 in covins, 50 in orbslam3
                 {
-                    if(mpCurrentKeyFrame->GetMap()->isImuInitialized() && mpTracker->mState==Tracking::OK) // Enter here everytime local-mapping is called
+                    if(mpCurrentKeyFrame->GetMap()->isImuInitialized() 
+                    && mpTracker->mState==Tracking::OK) // Enter here everytime local-mapping is called
                     {
                         if(!mpCurrentKeyFrame->GetMap()->GetIniertialBA1()){
                             if (mTinit>5.0f)
@@ -353,14 +425,17 @@ void LocalMapping::Run()
 			}
 
 			// Object-SLAM
-			mpLastKeyFrame = mpCurrentKeyFrame;
+			if (mpSystem->_use_python) {
+				mpLastKeyFrame = mpCurrentKeyFrame;
+			}
 
 #ifdef COVINS_MOD
             //-----------------------------
             // This section takes care of sending data to the COVINS backend
             if(!this->IsCommInitialized()) {
                 if(mbInertial) {
-			if(mpAtlas->isImuInitialized() && mpAtlas->GetAllKeyFrames().size() >= covins_params::comm::start_sending_after_kf) {
+			if(mpAtlas->isImuInitialized() 
+			&& mpAtlas->GetAllKeyFrames().size() >= covins_params::comm::start_sending_after_kf) {
                         this->SetCommInitialized();
                     }
                 } else {
@@ -609,8 +684,9 @@ void LocalMapping::CreateNewMapPoints()
 
         // Search matches that fullfil epipolar constraint
         vector<pair<size_t,size_t> > vMatchedIndices;
-        bool bCoarse = mbInertial &&
-                ((!mpCurrentKeyFrame->GetMap()->GetIniertialBA2() && mpCurrentKeyFrame->GetMap()->GetIniertialBA1())||
+        bool bCoarse = mbInertial 
+        				&& ((!mpCurrentKeyFrame->GetMap()->GetIniertialBA2() 
+        				&& mpCurrentKeyFrame->GetMap()->GetIniertialBA1())||
                  mpTracker->mState==Tracking::RECENTLY_LOST);
 
         matcher.SearchForTriangulation_(mpCurrentKeyFrame,pKF2,F12,vMatchedIndices,false,bCoarse);
@@ -638,16 +714,16 @@ void LocalMapping::CreateNewMapPoints()
             const int &idx2 = vMatchedIndices[ikp].second;
 
             const cv::KeyPoint &kp1 = (mpCurrentKeyFrame -> NLeft == -1) ? mpCurrentKeyFrame->mvKeysUn[idx1]
-                                                                         : (idx1 < mpCurrentKeyFrame -> NLeft) ? mpCurrentKeyFrame -> mvKeys[idx1]
-                                                                                                               : mpCurrentKeyFrame -> mvKeysRight[idx1 - mpCurrentKeyFrame -> NLeft];
+									: (idx1 < mpCurrentKeyFrame -> NLeft) ? mpCurrentKeyFrame -> mvKeys[idx1]
+									: mpCurrentKeyFrame -> mvKeysRight[idx1 - mpCurrentKeyFrame -> NLeft];
             const float kp1_ur=mpCurrentKeyFrame->mvuRight[idx1];
             bool bStereo1 = (!mpCurrentKeyFrame->mpCamera2 && kp1_ur>=0);
             const bool bRight1 = (mpCurrentKeyFrame -> NLeft == -1 || idx1 < mpCurrentKeyFrame -> NLeft) ? false
                                                                                : true;
 
             const cv::KeyPoint &kp2 = (pKF2 -> NLeft == -1) ? pKF2->mvKeysUn[idx2]
-                                                            : (idx2 < pKF2 -> NLeft) ? pKF2 -> mvKeys[idx2]
-                                                                                     : pKF2 -> mvKeysRight[idx2 - pKF2 -> NLeft];
+									: (idx2 < pKF2 -> NLeft) ? pKF2 -> mvKeys[idx2]
+									: pKF2 -> mvKeysRight[idx2 - pKF2 -> NLeft];
 
             const float kp2_ur = pKF2->mvuRight[idx2];
             bool bStereo2 = (!pKF2->mpCamera2 && kp2_ur>=0);
@@ -734,7 +810,7 @@ void LocalMapping::CreateNewMapPoints()
             float cosParallaxStereo2 = cosParallaxStereo;
 
             if(bStereo1)
-                cosParallaxStereo1 = cos(2*atan2(mpCurrentKeyFrame->mb/2,mpCurrentKeyFrame->mvDepth[idx1]));
+                cosParallaxStereo1 = cos(2*atan2(mpCurrentKeyFrame->mb/2, mpCurrentKeyFrame->mvDepth[idx1]));
             else if(bStereo2)
                 cosParallaxStereo2 = cos(2*atan2(pKF2->mb/2,pKF2->mvDepth[idx2]));
 
@@ -766,7 +842,9 @@ void LocalMapping::CreateNewMapPoints()
 
                 // Euclidean coordinates
 //                x3D = x3D_h.get_minor<3,1>(0,0) / x3D_h(3);
-                x3D = cv::Matx31f(x3D_h.get_minor<3,1>(0,0)(0) / x3D_h(3), x3D_h.get_minor<3,1>(0,0)(1) / x3D_h(3), x3D_h.get_minor<3,1>(0,0)(2) / x3D_h(3));
+                x3D = cv::Matx31f(	x3D_h.get_minor<3,1>(0,0)(0) / x3D_h(3), 
+                					x3D_h.get_minor<3,1>(0,0)(1) / x3D_h(3), 
+                					x3D_h.get_minor<3,1>(0,0)(2) / x3D_h(3)	);
                 bEstimated = true;
 
             }
@@ -898,7 +976,9 @@ void LocalMapping::SearchInNeighbors()
         nn=20;
     const vector<KeyFrame*> vpNeighKFs = mpCurrentKeyFrame->GetBestCovisibilityKeyFrames(nn);
     vector<KeyFrame*> vpTargetKFs;
-    for(vector<KeyFrame*>::const_iterator vit=vpNeighKFs.begin(), vend=vpNeighKFs.end(); vit!=vend; vit++)
+    for(vector<KeyFrame*>::const_iterator vit=vpNeighKFs.begin(), 
+    										vend=vpNeighKFs.end(); 
+    										vit!=vend; vit++)
     {
         KeyFrame* pKFi = *vit;
         if(pKFi->isBad() || pKFi->mnFuseTargetForKF == mpCurrentKeyFrame->mnId)
@@ -912,10 +992,13 @@ void LocalMapping::SearchInNeighbors()
     for(int i=0, imax=vpTargetKFs.size(); i<imax; i++)
     {
         const vector<KeyFrame*> vpSecondNeighKFs = vpTargetKFs[i]->GetBestCovisibilityKeyFrames(20);
-        for(vector<KeyFrame*>::const_iterator vit2=vpSecondNeighKFs.begin(), vend2=vpSecondNeighKFs.end(); vit2!=vend2; vit2++)
+        for(vector<KeyFrame*>::const_iterator vit2=vpSecondNeighKFs.begin(), 
+        										vend2=vpSecondNeighKFs.end(); 
+        										vit2!=vend2; vit2++)
         {
             KeyFrame* pKFi2 = *vit2;
-            if(pKFi2->isBad() || pKFi2->mnFuseTargetForKF==mpCurrentKeyFrame->mnId || pKFi2->mnId==mpCurrentKeyFrame->mnId)
+            if(pKFi2->isBad() 	|| pKFi2->mnFuseTargetForKF==mpCurrentKeyFrame->mnId 
+            					|| pKFi2->mnId==mpCurrentKeyFrame->mnId)
                 continue;
             vpTargetKFs.push_back(pKFi2);
             pKFi2->mnFuseTargetForKF=mpCurrentKeyFrame->mnId;
@@ -944,7 +1027,9 @@ void LocalMapping::SearchInNeighbors()
     // Search matches by projection from current KF in target KFs
     ORBmatcher matcher;
     vector<MapPoint*> vpMapPointMatches = mpCurrentKeyFrame->GetMapPointMatches();
-    for(vector<KeyFrame*>::iterator vit=vpTargetKFs.begin(), vend=vpTargetKFs.end(); vit!=vend; vit++)
+    for(vector<KeyFrame*>::iterator vit=vpTargetKFs.begin(), 
+    								vend=vpTargetKFs.end(); 
+    								vit!=vend; vit++)
     {
         KeyFrame* pKFi = *vit;
 
@@ -959,13 +1044,15 @@ void LocalMapping::SearchInNeighbors()
     vector<MapPoint*> vpFuseCandidates;
     vpFuseCandidates.reserve(vpTargetKFs.size()*vpMapPointMatches.size());
 
-    for(vector<KeyFrame*>::iterator vitKF=vpTargetKFs.begin(), vendKF=vpTargetKFs.end(); vitKF!=vendKF; vitKF++)
+    for(vector<KeyFrame*>::iterator vitKF=vpTargetKFs.begin(), 
+    					vendKF=vpTargetKFs.end(); vitKF!=vendKF; vitKF++)
     {
         KeyFrame* pKFi = *vitKF;
 
         vector<MapPoint*> vpMapPointsKFi = pKFi->GetMapPointMatches();
 
-        for(vector<MapPoint*>::iterator vitMP=vpMapPointsKFi.begin(), vendMP=vpMapPointsKFi.end(); vitMP!=vendMP; vitMP++)
+        for(vector<MapPoint*>::iterator vitMP=vpMapPointsKFi.begin(), 
+        					vendMP=vpMapPointsKFi.end(); vitMP!=vendMP; vitMP++)
         {
             MapPoint* pMP = *vitMP;
             if(!pMP)
@@ -1182,11 +1269,13 @@ void LocalMapping::KeyFrameCulling()
                     if(pMP->Observations()>thObs)
                     {
                         const int &scaleLevel = (pKF -> NLeft == -1) ? pKF->mvKeysUn[i].octave
-                                                                     : (i < pKF -> NLeft) ? pKF -> mvKeys[i].octave
-                                                                                          : pKF -> mvKeysRight[i].octave;
+                        						: (i < pKF -> NLeft) ? pKF -> mvKeys[i].octave
+                        						: pKF -> mvKeysRight[i].octave;
                         const map<KeyFrame*, tuple<int,int>> observations = pMP->GetObservations();
                         int nObs=0;
-                        for(map<KeyFrame*, tuple<int,int>>::const_iterator mit=observations.begin(), mend=observations.end(); mit!=mend; mit++)
+                        for(map<KeyFrame*, tuple<int,int>>::const_iterator mit=observations.begin(), 
+                        												mend=observations.end(); 
+                        												mit!=mend; mit++)
                         {
                             KeyFrame* pKFi = mit->first;
                             if(pKFi==pKF)
@@ -1203,7 +1292,7 @@ void LocalMapping::KeyFrameCulling()
                                 if (rightIndex != -1) {
                                     int rightLevel = pKFi->mvKeysRight[rightIndex - pKFi->NLeft].octave;
                                     scaleLeveli = (scaleLeveli == -1 || scaleLeveli > rightLevel) ? rightLevel
-                                                                                                  : scaleLeveli;
+																								: scaleLeveli;
                                 }
                             }
 
@@ -1246,7 +1335,8 @@ void LocalMapping::KeyFrameCulling()
                         pKF->mPrevKF = NULL;
                         pKF->SetBadFlag();
                     }
-                    else if(!mpCurrentKeyFrame->GetMap()->GetIniertialBA2() && (cv::norm(pKF->GetImuPosition()-pKF->mPrevKF->GetImuPosition())<0.02) && (t<3))
+                    else if(!mpCurrentKeyFrame->GetMap()->GetIniertialBA2() 
+                    	&& (cv::norm(pKF->GetImuPosition()-pKF->mPrevKF->GetImuPosition())<0.02) && (t<3))
                     {
                         pKF->mNextKF->mpImuPreintegrated->MergePrevious(pKF->mpImuPreintegrated);
                         pKF->mNextKF->mPrevKF = pKF->mPrevKF;
@@ -1345,10 +1435,12 @@ void LocalMapping::ResetIfRequested()
             mbResetRequestedActiveMap = false;
 			
 			// Object-SLAM
-			mlpRecentAddedMapObjects.clear();
-			std::vector<MapObject*> pMOs = mpAtlas->GetAllMapObjects();
-			for(MapObject* pMO : pMOs)
-				mpAtlas->EraseMapObject(pMO);	
+			if (mpSystem->_use_python) {
+				mlpRecentAddedMapObjects.clear();
+				std::vector<MapObject*> pMOs = mpAtlas->GetAllMapObjects();
+				for(MapObject* pMO : pMOs)
+					mpAtlas->EraseMapObject(pMO);
+			}
 
             // Inertial parameters
             mTinit = 0.f;
@@ -1373,10 +1465,12 @@ void LocalMapping::ResetIfRequested()
             mlpRecentAddedMapPoints.clear();
 
 			// Object-SLAM
-			mlpRecentAddedMapObjects.clear();
-			std::vector<MapObject*> pMOs = mpAtlas->GetAllMapObjects();
-			for(MapObject* pMO : pMOs)
-				mpAtlas->EraseMapObject(pMO);
+			if (mpSystem->_use_python) {
+				mlpRecentAddedMapObjects.clear();
+				std::vector<MapObject*> pMOs = mpAtlas->GetAllMapObjects();
+				for(MapObject* pMO : pMOs)
+					mpAtlas->EraseMapObject(pMO);
+			}
 
             // Inertial parameters
             mTinit = 0.f;
@@ -1517,7 +1611,13 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
     mInitTime = mpTracker->mLastFrame.mTimeStamp-vpKF.front()->mTimeStamp;
 
     std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
-    Optimizer::InertialOptimization(mpAtlas->GetCurrentMap(), mRwg, mScale, mbg, mba, mbMonocular, infoInertial, false, false, priorG, priorA);
+    Optimizer::InertialOptimization(mpAtlas->GetCurrentMap(), 
+    								mRwg, mScale, 
+    								mbg, mba, 
+    								mbMonocular, 
+    								infoInertial, 
+    								false, false, 
+    								priorG, priorA);
     std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 
     if (mScale<1e-1)
@@ -1535,8 +1635,11 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
 	std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
 	if ((fabs(mScale-1.f)>0.00001)||!mbMonocular) 
 	{
-		//mpAtlas->GetCurrentMap()->ApplyScaledRotation(Converter::toCvMat(mRwg).t(),mScale,true);
-		mpAtlas->GetCurrentMap()->ApplyScaledRotationWithObjects(Converter::toCvMat(mRwg).t(),mScale,true); // Object-SLAM
+		if (mpSystem->_use_python) {
+			mpAtlas->GetCurrentMap()->ApplyScaledRotationWithObjects(Converter::toCvMat(mRwg).t(),mScale,true); // Object-SLAM
+		} else {
+			mpAtlas->GetCurrentMap()->ApplyScaledRotation(Converter::toCvMat(mRwg).t(),mScale,true);
+		}
 		mpTracker->UpdateFrameIMU(mScale, vpKF[0]->GetImuBias(), mpCurrentKeyFrame);
 	}
 	std::chrono::steady_clock::time_point t3 = std::chrono::steady_clock::now();
@@ -1554,12 +1657,36 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
     {
 		Verbose::PrintMess("LM::InitializeIMU::FullInertialBA ", Verbose::VERBOSITY_DEBUG);
         if (priorA!=0.f){
-            Optimizer::FullInertialBA(mpAtlas->GetCurrentMap(), 100, false, 0, NULL, true, priorG, priorA); // 0 or mpCurrentKeyFrame->mnId ?
-			//Optimizer::FullInertialJointBA(mpAtlas->GetCurrentMap(), 100, false, 0, NULL, true, priorG, priorA);
+            Optimizer::FullInertialBA(mpAtlas->GetCurrentMap(), 
+            							100, 
+            							false, 
+            							0,   // 0 or mpCurrentKeyFrame->mnId ?
+            							NULL, 
+            							true, 
+            							priorG, 
+            							priorA);
+/*			Optimizer::FullInertialJointBA(mpAtlas->GetCurrentMap(), 
+										100, 
+										false, 
+										0, 
+										NULL, 
+										true, 
+										priorG, 
+										priorA); */
 		}
         else{
-            Optimizer::FullInertialBA(mpAtlas->GetCurrentMap(), 100, false, 0, NULL, false);
-			//Optimizer::FullInertialJointBA(mpAtlas->GetCurrentMap(), 100, false, 0, NULL, false);
+            Optimizer::FullInertialBA(mpAtlas->GetCurrentMap(), 
+            							100, 
+            							false, 
+            							0, 
+            							NULL, 
+            							false);
+/*			Optimizer::FullInertialJointBA(mpAtlas->GetCurrentMap(), 
+										100, 
+										false, 
+										0, 
+										NULL, 
+										false); */
 		}
     }
 
@@ -1642,8 +1769,11 @@ void LocalMapping::ScaleRefinement()
     std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
     if ((fabs(mScale-1.f)>0.00001)||!mbMonocular)
     {
-        //mpAtlas->GetCurrentMap()->ApplyScaledRotation(Converter::toCvMat(mRwg).t(),mScale,true);
-		mpAtlas->GetCurrentMap()->ApplyScaledRotationWithObjects(Converter::toCvMat(mRwg).t(),mScale,true); // Object-SLAM
+        if (mpSystem->_use_python) {
+			mpAtlas->GetCurrentMap()->ApplyScaledRotationWithObjects(Converter::toCvMat(mRwg).t(),mScale,true); // Object-SLAM
+		} else {
+			mpAtlas->GetCurrentMap()->ApplyScaledRotation(Converter::toCvMat(mRwg).t(),mScale,true);
+		}
         mpTracker->UpdateFrameIMU(mScale,mpCurrentKeyFrame->GetImuBias(),mpCurrentKeyFrame);
     }
     std::chrono::steady_clock::time_point t3 = std::chrono::steady_clock::now();
