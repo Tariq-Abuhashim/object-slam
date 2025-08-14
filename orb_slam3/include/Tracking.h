@@ -117,6 +117,10 @@ public:
     void GetObjectDetectionsMono(KeyFrame *pKF);
     void AssociateObjectsByProjection(KeyFrame *pKF);  // assocating detection to object by projecting map points
 
+    inline void SetDebug(const bool flag) {
+    	std::cout << "[DEBUG]: Tracking debug flag has been set to TRUE\n";
+		_debug = flag;
+    }
     
 public:
 
@@ -172,7 +176,6 @@ public:
     double t0; // time-stamp of first read frame
     double t0vis; // time-stamp of first inserted keyframe
     double t0IMU; // time-stamp of IMU initialization
-
 
     vector<MapPoint*> GetLocalMapMPS();
 
@@ -367,6 +370,18 @@ protected:
     int initID, lastID;
 
     cv::Mat mTlr;
+    
+    // object-slam
+    bool _debug;
+    bool _use_python;
+    bool _use_lidar;
+    /*
+    #ifdef NDEBUG
+    bool _debug = false;
+    #else
+    bool _debug = true;
+	#endif
+	*/
 
 public:
     cv::Mat mImRight;

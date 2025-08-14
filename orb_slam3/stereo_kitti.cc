@@ -63,7 +63,9 @@ int main(int argc, char **argv)
 		          << "/media/mrt/Whale/data/kitti/2011_09_30/2011_09_30_drive_0018_sync"
 		          << std::endl;
 
-		std::cerr << std::endl << "Debug mode (then type <run>):" << std::endl;
+		std::cerr << std::endl << "Debug mode (then type <run>, and backtrace <bt>):" << std::endl;
+		std::cerr << "cmake -DCMAKE_BUILD_TYPE=Debug .. \n";
+		std::cerr << "make -j  \n";
 		std::cerr << "gdb --args ./stereo_kitti "
 		          << "<path_to_vocabulary> "
 		          << "<path_to_settings> "
@@ -175,10 +177,13 @@ int main(int argc, char **argv)
             ttrack_tot += t_track;
             vTimesTrack[ni] = t_track;
             
+            std::cout << "fps = " << 1000/t_track << std::endl;
+            
 #ifdef REGISTER_TIMES
             //SLAM.InsertTrackTime(t_track);
 #endif
-          
+          	usleep(1000.0);
+          	
 			// Wait to load the next frame (following actually timestamps of data)
             double T=0;
             if(ni<nImages[seq]-1)
@@ -197,12 +202,13 @@ int main(int argc, char **argv)
     }
     
     // Wait viewer
-    cv::waitKey(0);
+    //cv::waitKey(0);
     
     // Stop all threads
     SLAM.Shutdown();
     
     // Save camera trajectory
+    /*
     if (bFileName)
     {
         const string kf_file =  "kf_" + string(argv[argc-1]) + ".txt";
@@ -215,6 +221,7 @@ int main(int argc, char **argv)
         SLAM.SaveTrajectoryEuRoC("CameraTrajectory.txt");
         SLAM.SaveKeyFrameTrajectoryEuRoC("KeyFrameTrajectory.txt");
     }
+    */
 
     return 0;
 }
@@ -226,8 +233,8 @@ void LoadImages(const string &pathSeq, vector<string> &vstrImageLeft,
 	std::cout << "[LoadImages] pathSeq := " + pathSeq << std::endl;
 	
     ifstream fTimes;
-    string strPathTimeFile = pathSeq + "/times.txt";
-	//string strPathTimeFile = pathSeq + "/oxts/timestamps.txt";
+    //string strPathTimeFile = pathSeq + "/times.txt";
+	string strPathTimeFile = pathSeq + "/oxts/timestamps.txt";
     fTimes.open(strPathTimeFile.c_str());
     if (!fTimes.is_open()) {
     	std::cerr << "[LoadImages] Couldn't open " << strPathTimeFile << std::endl;
@@ -259,7 +266,7 @@ void LoadImages(const string &pathSeq, vector<string> &vstrImageLeft,
     
     /* read timestamps from file
     	format = seconds */
-    //while(!fTimes.eof()) //eof() only becomes true after a failed read.
+/*
     string str;
     while (getline(fTimes, str))
     {
@@ -271,12 +278,12 @@ void LoadImages(const string &pathSeq, vector<string> &vstrImageLeft,
 				vTimeStamps.push_back(s);
 			}
         }
-    }
+    } */
     
     /* fake timestamps using fps
     	this is not useful if IMU-Image synchronisation is needed
     */
-/*    const float fps = 20.;
+    const float fps = 10.;
     const float dt = 1. / fps;
     float t = 0.;
     string s;
@@ -287,21 +294,22 @@ void LoadImages(const string &pathSeq, vector<string> &vstrImageLeft,
             vTimeStamps.push_back(t);
             t += dt;
         }
-    } */
+    }
     
 	const int nTimes = vTimeStamps.size();
 	std::cout << "[LoadImages] nTimes " << nTimes << "\n";
 	
-    //string strPrefixLeft = pathSeq + "/image_00/data/";
-    //string strPrefixRight = pathSeq + "/image_01/data/";
-    string strPrefixLeft = pathSeq + "/image_0/";
-    string strPrefixRight = pathSeq + "/image_1/";
+	/* Assuming timestamps and images are synchronised */
+    string strPrefixLeft = pathSeq + "/image_00/data/";
+    string strPrefixRight = pathSeq + "/image_01/data/";
+    //string strPrefixLeft = pathSeq + "/image_0/";
+    //string strPrefixRight = pathSeq + "/image_1/";
     vstrImageLeft.resize(nTimes);
     vstrImageRight.resize(nTimes);
     for(int i=0; i<nTimes; i++)
     {
         stringstream ss;
-        ss << setfill('0') << setw(6) << i;  // FIXME 6 or 10
+        ss << setfill('0') << setw(10) << i;  // FIXME 6 or 10
         vstrImageLeft[i] = strPrefixLeft + ss.str() + ".png";
         vstrImageRight[i] = strPrefixRight + ss.str() + ".png";
     }

@@ -22,35 +22,34 @@ void Tracking::GetObjectDetectionsLiDAR(KeyFrame *pKF) {
 
     PyThreadStateLock PyThreadLock;
     int count = 0;
+	py::list detections = mpSystem->pySequence.attr("get_frame_by_id")(pKF->mnFrameId);//, false);
+	for (auto det : detections) {
+		auto pts = det.attr("surface_points").cast<Eigen::MatrixXf>();
+		auto Sim3Tco = det.attr("T_cam_obj").cast<Eigen::Matrix4f>();
+		auto rays = det.attr("rays");
+		auto box = det.attr("scale").cast<Eigen::Vector3f>(); // TODO new update, use point-pillar bounding box
+		Eigen::MatrixXf rays_mat;
+		Eigen::VectorXf depth;
 
-	py::list detections = mpSystem->pySequence.attr("get_frame_by_id")(pKF->mnFrameId);
-    	for (auto det : detections) {
-    		auto pts = det.attr("surface_points").cast<Eigen::MatrixXf>();
-        	auto Sim3Tco = det.attr("T_cam_obj").cast<Eigen::Matrix4f>();
-        	auto rays = det.attr("rays");
-		auto box = det.attr("scale").cast<Eigen::Vector3f>();; // TODO new update, use point-pillar bounding box
-        	Eigen::MatrixXf rays_mat;
-        	Eigen::VectorXf depth;
-
-        	if (rays.is_none()) {
-        		//std::cout << "No 2D masks associated!" << std::endl;
-            		rays_mat = Eigen::Matrix<float, 0, 0>::Zero();
-            		depth = Eigen::VectorXf::Zero(0); // DSP changes, this was Eigen::Vector<float, 0>::Zero() 
-        	} else {
-            		rays_mat = rays.cast<Eigen::MatrixXf>();
-            		depth = det.attr("depth").cast<Eigen::VectorXf>();
-			count++;
-        	}
+		if (rays.is_none()) {
+			//std::cout << "No 2D masks associated!" << std::endl;
+			rays_mat = Eigen::Matrix<float, 0, 0>::Zero();
+			depth = Eigen::VectorXf::Zero(0); // DSP changes, this was Eigen::Vector<float, 0>::Zero() 
+		} else {
+			rays_mat = rays.cast<Eigen::MatrixXf>();
+			depth = det.attr("depth").cast<Eigen::VectorXf>();
+		count++;
+		}
         		
-        	// Create C++ detection instance
-        	auto o = new ObjectDetection(Sim3Tco, pts, rays_mat, depth, box);
-        	//auto o = std::make_shared<ObjectDetection>(Sim3Tco, pts, rays_mat, depth, box);
-         	pKF->mvpDetectedObjects.push_back(o);
-        }
-    	pKF->nObj = pKF->mvpDetectedObjects.size();
-    	pKF->mvpMapObjects = vector<MapObject *>(pKF->nObj, static_cast<MapObject *>(NULL));
+		// Create C++ detection instance
+		auto o = new ObjectDetection(Sim3Tco, pts, rays_mat, depth, box);
+		//auto o = std::make_shared<ObjectDetection>(Sim3Tco, pts, rays_mat, depth, box);
+		pKF->mvpDetectedObjects.push_back(o);
+	}
+	pKF->nObj = pKF->mvpDetectedObjects.size();
+	pKF->mvpMapObjects = vector<MapObject *>(pKF->nObj, static_cast<MapObject *>(NULL));
 	//std::cout << "TRACK_UTIL: KF" << pKF->mnId << " detections: " << pKF->nObj
-        //          << " 3D cuboids + " << count << " 2D masks." << std::endl;
+	//          << " 3D cuboids + " << count << " 2D masks." << std::endl;
 }
 
 void Tracking::ObjectDataAssociation(KeyFrame *pKF)

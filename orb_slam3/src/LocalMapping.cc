@@ -43,7 +43,8 @@ LocalMapping::LocalMapping(System* pSys, Atlas *pAtlas, ObjectDrawer* pObjectDra
     mpAtlas(pAtlas), mpObjectDrawer(pObjectDrawer), bInitializing(false),
     mbAbortBA(false), mbStopped(false), mbStopRequested(false), mbNotStop(false), mbAcceptKeyFrames(true),
     mbNewInit(false), mIdxInit(0), mScale(1.0), mInitSect(0), mbNotBA1(true), mbNotBA2(true), 
-    infoInertial(Eigen::MatrixXd::Zero(9,9))
+    infoInertial(Eigen::MatrixXd::Zero(9,9)),
+    _debug(false), _use_python(pSys->_use_python), _use_lidar(pSys->_use_lidar)
 {
     mnMatchesInliers = 0;
 

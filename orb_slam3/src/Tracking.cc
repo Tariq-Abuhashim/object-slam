@@ -58,7 +58,8 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
     mpInitializer(static_cast<Initializer*>(NULL)), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0), time_recently_lost_visual(3.0f),
-    mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL))
+    mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL)),
+	_debug(false), _use_python(pSys->_use_python), _use_lidar(pSys->_use_lidar)
 {
     // Load camera parameters from settings file
     cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
@@ -1518,7 +1519,7 @@ void Tracking::PreintegrateIMU()
 
     mCurrentFrame.setIntegrated();
 
-    //Verbose::PrintMess("Preintegration is finished!! ", Verbose::VERBOSITY_DEBUG);
+    Verbose::PrintMess("Preintegration is finished!! ", Verbose::VERBOSITY_DEBUG);
 }
 
 
@@ -1717,8 +1718,8 @@ void Tracking::Track()
         else if(mCurrentFrame.mTimeStamp>mLastFrame.mTimeStamp+1.0)
         #endif
         {
-            // cout << "id last: " << mLastFrame.mnId << "    id curr: " << mCurrentFrame.mnId << endl;
-            // std::cout << "Timestamp diff: " << mCurrentFrame.mTimeStamp - mLastFrame.mTimeStamp << std::endl;
+            cout << "id last: " << mLastFrame.mnId << "    id curr: " << mCurrentFrame.mnId << endl;
+            std::cout << "Timestamp diff: " << mCurrentFrame.mTimeStamp - mLastFrame.mTimeStamp << std::endl;
             if(mpAtlas->isInertial())
             {
                 #ifdef COVINS_MOD
@@ -1768,7 +1769,7 @@ void Tracking::Track()
 
     mLastProcessedState=mState;
 
-    if ((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO) && !mbCreatedMap)
+    if ((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD) && !mbCreatedMap)
     {
 #ifdef REGISTER_TIMES
         std::chrono::steady_clock::time_point time_StartPreIMU = std::chrono::steady_clock::now();
@@ -1800,7 +1801,7 @@ void Tracking::Track()
 
     if(mState==NOT_INITIALIZED)
     {
-        if(mSensor==System::STEREO || mSensor==System::RGBD || mSensor==System::IMU_STEREO)
+        if(mSensor==System::STEREO || mSensor==System::RGBD || mSensor==System::IMU_STEREO || mSensor==System::IMU_RGBD)
         {
             StereoInitialization();
         }
@@ -1856,7 +1857,7 @@ void Tracking::Track()
                 }
                 else
                 {
-                    //Verbose::PrintMess("TRACK: Track with motion model", Verbose::VERBOSITY_DEBUG);
+                    Verbose::PrintMess("TRACK: Track with motion model", Verbose::VERBOSITY_DEBUG);
                     bOK = TrackWithMotionModel();
                     if(!bOK)
                         bOK = TrackReferenceKeyFrame();
@@ -1872,7 +1873,7 @@ void Tracking::Track()
                     }
                     else if(pCurrentMap->KeyFramesInMap()>10)
                     {
-                        // cout << "KF in map: " << pCurrentMap->KeyFramesInMap() << endl;
+                        cout << "KF in map: " << pCurrentMap->KeyFramesInMap() << endl;
                         mState = RECENTLY_LOST;
                         mTimeStampLost = mCurrentFrame.mTimeStamp;
                         //mCurrentFrame.SetPose(mLastFrame.mTcw);
@@ -2101,7 +2102,7 @@ void Tracking::Track()
         double timeLMTrack = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndLMTrack - time_StartLMTrack).count();
         vdLMTrack_ms.push_back(timeLMTrack);
 #endif
-		
+
         // Update drawer
         mpFrameDrawer->Update(this);
         if(!mCurrentFrame.mTcw.empty())
@@ -2190,7 +2191,7 @@ void Tracking::Track()
 
             CreateMapInAtlas();
 
-            return;
+            return;  // FIXME comment out?
         }
 
         if(!mCurrentFrame.mpReferenceKF)
@@ -2273,8 +2274,8 @@ void Tracking::StereoInitialization()
         KeyFrame* pKFini = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
 
         // Object-SLAM
-        if (mpSystem->_use_python) {
-        	GetObjectDetectionsLiDAR(pKFini);
+        if (_use_python) {
+        GetObjectDetectionsLiDAR(pKFini);
         }
 
         // Insert KeyFrame in the map
@@ -2331,7 +2332,7 @@ void Tracking::StereoInitialization()
         mLastFrame = Frame(mCurrentFrame);
         mnLastKeyFrameId = mCurrentFrame.mnId;
         mpLastKeyFrame = pKFini;
-        mnLastRelocFrameId = mCurrentFrame.mnId;
+        mnLastRelocFrameId = mCurrentFrame.mnId; // FIXME comment out?
 
         mvpLocalKeyFrames.push_back(pKFini);
         mvpLocalMapPoints=mpAtlas->GetAllMapPoints();
@@ -2430,7 +2431,8 @@ void Tracking::MonocularInitialization()
             tcw.copyTo(Tcw.rowRange(0,3).col(3));
             mCurrentFrame.SetPose(Tcw);
 
-            CreateInitialMapMonocular(); // Vision-only bundle-adjustment and map initialisation
+            CreateInitialMapMonocular();
+
         }
     }
 }
@@ -2449,11 +2451,6 @@ void Tracking::CreateInitialMapMonocular()
 
     pKFini->ComputeBoW();
     pKFcur->ComputeBoW();
-
-	// FIXME Object-SLAM (we dont want to have this here, it will slow initialistaion down)
-	//bool WITH_LIDAR = true;
-	//if (WITH_LIDAR)
-    //	GetObjectDetectionsLiDAR(pKFcur);  // FIXME doing it for current keyframe only
 
     // Insert KFs in the map
     mpAtlas->AddKeyFrame(pKFini);
@@ -2495,9 +2492,9 @@ void Tracking::CreateInitialMapMonocular()
 
     // Bundle Adjustment
     Verbose::PrintMess("New Map created with " + to_string(mpAtlas->MapPointsInMap()) + " points", Verbose::VERBOSITY_QUIET);
-	Verbose::PrintMess("RUNNING VISION-ONLY BUNDLE ADJUSTMENT ......", Verbose::VERBOSITY_NORMAL);
     Optimizer::GlobalBundleAdjustemnt(mpAtlas->GetCurrentMap(),20);
-	Verbose::PrintMess("Completed !!!!", Verbose::VERBOSITY_QUIET);
+
+    pKFcur->PrintPointDistribution();
 
     float medianDepth = pKFini->ComputeSceneMedianDepth(2);
     float invMedianDepth;
@@ -2547,7 +2544,7 @@ void Tracking::CreateInitialMapMonocular()
     mCurrentFrame.SetPose(pKFcur->GetPose());
     mnLastKeyFrameId=mCurrentFrame.mnId;
     mpLastKeyFrame = pKFcur;
-    //mnLastRelocFrameId = mInitialFrame.mnId;
+    mnLastRelocFrameId = mInitialFrame.mnId;
 
     mvpLocalKeyFrames.push_back(pKFcur);
     mvpLocalKeyFrames.push_back(pKFini);
@@ -2574,7 +2571,7 @@ void Tracking::CreateInitialMapMonocular()
 
     mpAtlas->GetCurrentMap()->mvpKeyFrameOrigins.push_back(pKFini);
 
-    mState=OK;   // state is set to Okay after the vision-only initialisation
+    mState=OK;
 
     initID = pKFcur->mnId;
 }
@@ -2620,6 +2617,7 @@ void Tracking::CreateMapInAtlas()
     mvIniMatches.clear();
 
     mbCreatedMap = true;
+
 }
 
 void Tracking::CheckReplacedInLastFrame()
@@ -2739,11 +2737,12 @@ void Tracking::UpdateLastFrame()
         bool bCreateNew = false;
 
         MapPoint* pMP = mLastFrame.mvpMapPoints[i];
-
         if(!pMP)
             bCreateNew = true;
         else if(pMP->Observations()<1)
+        {
             bCreateNew = true;
+        }
 
         if(bCreateNew)
         {
@@ -2761,8 +2760,9 @@ void Tracking::UpdateLastFrame()
         }
 
         if(vDepthIdx[j].first>mThDepth && nPoints>100)
+        {
             break;
-
+        }
     }
 }
 
@@ -2865,8 +2865,24 @@ bool Tracking::TrackLocalMap()
     // We retrieve the local map and try to find matches to points in the local map.
     mTrackedFr++;
 
+#ifdef REGISTER_TIMES
+    std::chrono::steady_clock::time_point time_StartLMUpdate = std::chrono::steady_clock::now();
+#endif
     UpdateLocalMap();
+#ifdef REGISTER_TIMES
+    std::chrono::steady_clock::time_point time_StartSearchLP = std::chrono::steady_clock::now();
+
+    double timeUpdatedLM_ms = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_StartSearchLP - time_StartLMUpdate).count();
+    vdUpdatedLM_ms.push_back(timeUpdatedLM_ms);
+#endif
+
     SearchLocalPoints();
+#ifdef REGISTER_TIMES
+    std::chrono::steady_clock::time_point time_StartPoseOpt = std::chrono::steady_clock::now();
+
+    double timeSearchLP_ms = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_StartPoseOpt - time_StartSearchLP).count();
+    vdSearchLP_ms.push_back(timeSearchLP_ms);
+#endif
 
     // TOO check outliers before PO
     int aux1 = 0, aux2=0;
@@ -2902,6 +2918,15 @@ bool Tracking::TrackLocalMap()
             }
         }
     }
+#ifdef REGISTER_TIMES
+    std::chrono::steady_clock::time_point time_EndPoseOpt = std::chrono::steady_clock::now();
+
+    double timePoseOpt_ms = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndPoseOpt - time_StartPoseOpt).count();
+    vdPoseOpt_ms.push_back(timePoseOpt_ms);
+#endif
+
+    vnKeyFramesLM.push_back(mvpLocalKeyFrames.size());
+    vnMapPointsLM.push_back(mvpLocalMapPoints.size());
 
     aux1 = 0, aux2 = 0;
     for(int i=0; i<mCurrentFrame.N; i++)
@@ -3089,7 +3114,7 @@ bool Tracking::NeedNewKeyFrame()
     {
         // If the mapping accepts keyframes, insert keyframe.
         // Otherwise send a signal to interrupt BA
-        if(bLocalMappingIdle || mpLocalMapper->IsInitializing())
+        if(bLocalMappingIdle) // || mpLocalMapper->IsInitializing())
         {
             return true;
         }
@@ -3122,52 +3147,45 @@ void Tracking::CreateNewKeyFrame()
     KeyFrame* pKF = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
 
     // Object-SLAM
-    if (mpSystem->_use_python) {
-		if (mSensor == System::STEREO || mSensor == System::IMU_STEREO)
+    if (_use_python) {
+	if (mSensor == System::STEREO || mSensor == System::IMU_STEREO)
+	{
+		GetObjectDetectionsLiDAR(pKF);
+		if (!mpAtlas->GetAllMapObjects().empty())
 		{
-		    GetObjectDetectionsLiDAR(pKF);
-		    if (!mpAtlas->GetAllMapObjects().empty())
-		    {
-		        ObjectDataAssociation(pKF);
-		    }
-		}
-		else if (mSensor == System::MONOCULAR || mSensor == System::IMU_MONOCULAR)
-		{
-		    std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
-
-			bool WITH_LIDAR = true; // FIXME this needs to be outside parameter or check for lidar data
-
-			// Object-SLAM
-			if (WITH_LIDAR)
-			{
-				//if (mState == Tracking::OK && mpAtlas->isImuInitialized())
-				//if (mState != Tracking::NOT_INITIALIZED)
-				if (mpAtlas->isImuInitialized())
-				{
-					GetObjectDetectionsLiDAR(pKF);
-					if (!mpAtlas->GetAllMapObjects().empty())
-					{
-						ObjectDataAssociation(pKF);
-					}
-				}
-			}
-			else
-			{
-				GetObjectDetectionsMono(pKF);
-				//DetectObjects(pKF);
-				if (!mpAtlas->GetAllMapObjects().empty())
-				{
-				    // AssociateObjects(pKF);
-				    AssociateObjectsByProjection(pKF);
-				}
-			}
-
-		    std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-
-		    double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
-		    //cout << "Object detection takes " << ttrack << endl;
+			ObjectDataAssociation(pKF);
 		}
 	}
+	else if (mSensor == System::MONOCULAR || mSensor == System::IMU_MONOCULAR)
+	{
+		std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+		if (_use_lidar)
+		{
+			if (mpAtlas->isImuInitialized())
+			{
+				GetObjectDetectionsLiDAR(pKF);
+				if (!mpAtlas->GetAllMapObjects().empty())
+				{
+					ObjectDataAssociation(pKF);
+				}
+			}
+		}
+		else
+		{
+			GetObjectDetectionsMono(pKF);
+			//DetectObjects(pKF);
+			if (!mpAtlas->GetAllMapObjects().empty())
+			{
+				// AssociateObjects(pKF);
+				AssociateObjectsByProjection(pKF);
+			}
+		}
+        std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+
+        double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+        cout << "Object detection takes " << ttrack << endl;
+    }
+	} // _use_python
 
     if(mpAtlas->isImuInitialized())
         pKF->bImu = true;
@@ -3274,7 +3292,7 @@ void Tracking::CreateNewKeyFrame()
                 }
             }
 
-            //Verbose::PrintMess("new mps for stereo KF: " + to_string(nPoints), Verbose::VERBOSITY_NORMAL);
+            Verbose::PrintMess("new mps for stereo KF: " + to_string(nPoints), Verbose::VERBOSITY_NORMAL);
 
         }
     }

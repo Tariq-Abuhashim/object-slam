@@ -16,10 +16,15 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Use With Caution
+# -Wno-deprecated-copy
+# -Wno-conversion-null
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} \
     -Wno-deprecated-declarations \
     -Wno-attributes \
     -Wno-deprecated-copy \
+    -Wno-conversion-null \
+    -Wno-cpp \
     -O3")
 
 # ---------------------------------------
@@ -37,15 +42,29 @@ message(STATUS "Python3_INCLUDE_DIRS = ${Python3_INCLUDE_DIRS}")
 message(STATUS "Python3_LIBRARIES = ${Python3_LIBRARIES}")
 
 # ---------------------------------------
+# Pytorch
+# ---------------------------------------
+
+# Pytorch
+find_package(Torch REQUIRED)
+message(STATUS "Pytorch includes: ${TORCH_INCLUDE_DIRS}")
+message(STATUS "Pytorch libs: ${TORCH_LIBRARIES}")
+
+# critical definition for PyTorch Python bindings
+#add_definitions(-D_GLIBCXX_USE_CXX11_ABI=1)
+#add_definitions(-DTORCH_EXTENSION_NAME=${PROJECT_NAME})
+#add_definitions(-DPYBIND11_COMPILER_TYPE=\"_gcc\")
+#add_definitions(-DPYBIND11_STDLIB=\"_libstdcpp\")
+
+# ---------------------------------------
 # Third-party Eigen (force this version!)
 # ---------------------------------------
 
 # Tell CMake where your custom EigenConfig.cmake is
-set(Eigen3_DIR "${PROJECT_SOURCE_DIR}/Thirdparty/eigen/install/share/eigen3/cmake")
+#set(Eigen3_DIR "${PROJECT_SOURCE_DIR}/Thirdparty/eigen/install/share/eigen3/cmake")
 
 # Now find it
-find_package(Eigen3 3.4.0 REQUIRED NO_DEFAULT_PATH)
-
+find_package(Eigen3 REQUIRED)
 message(STATUS "Eigen3 version found: ${Eigen3_VERSION}")
 message(STATUS "Eigen3 include dir: ${EIGEN3_INCLUDE_DIR}")
 
@@ -72,7 +91,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/include
   ${PROJECT_SOURCE_DIR}/include/CameraModels
   ${PROJECT_SOURCE_DIR}/include/comm
-  ${PROJECT_SOURCE_DIR}/pybind11/include
+  ${PROJECT_SOURCE_DIR}/Thirdparty/pybind11/include
   ${PROJECT_SOURCE_DIR}/Thirdparty
   ${PROJECT_SOURCE_DIR}/Thirdparty/Sophus
   ${PROJECT_SOURCE_DIR}/../covins_backend/include
@@ -80,6 +99,8 @@ include_directories(
   ${EIGEN3_INCLUDE_DIR}
   ${Pangolin_INCLUDE_DIRS}
   ${Python3_INCLUDE_DIRS}
+  ${TORCH_INCLUDE_DIRS}
+  #${PROJECT_SOURCE_DIR}/tensor_utils
 )
 
 # ---------------------------------------
@@ -107,9 +128,13 @@ endforeach()
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
 # ---------------------------------------
-# pybind11
+# Thirdparty subdirs
 # ---------------------------------------
-add_subdirectory(${PROJECT_SOURCE_DIR}/pybind11)
+add_subdirectory(${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2)
+add_subdirectory(${PROJECT_SOURCE_DIR}/Thirdparty/g2o)
+add_subdirectory(${PROJECT_SOURCE_DIR}/Thirdparty/pybind11)
+add_subdirectory(${PROJECT_SOURCE_DIR}/Thirdparty/Sophus)
+#add_subdirectory(tensor_utils)
 
 # ---------------------------------------
 # Source files
@@ -181,6 +206,7 @@ set(HEADER_FILES
   include/ObjectPoseGraph.h
   include/Renderer.hpp
   include/Optimizer.h
+  #include/car.h
   include/Frame.h
   include/KeyFrameDatabase.h
   include/Sim3Solver.h
@@ -205,23 +231,22 @@ set(HEADER_FILES
 add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES} ${HEADER_FILES})
 
 # ---------------------------------------
-# Thirdparty subdirs
-# ---------------------------------------
-add_subdirectory(Thirdparty/g2o)
-
-# ---------------------------------------
 # Link libraries
 # ---------------------------------------
 target_link_libraries(${PROJECT_NAME}
+  torch_python
+  ${Python3_LIBRARIES}
   pybind11::embed
+  pybind11::module
   ${OpenCV_LIBS}
   ${Pangolin_LIBRARIES}
   ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
   ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
+  #tensor_utils_gpu
   -lcrypto -lncurses -lncursesw -lffi
   snark_imaging snark_ouster comma_csv comma_string comma_xpath
   -lboost_serialization -lboost_system -lpthread
-) 
+)
 
 # ---------------------------------------
 # Optional: print target summary
@@ -245,15 +270,14 @@ target_link_libraries(stereo_kitti ${PROJECT_NAME})
 add_executable(stereo_inertial_kitti stereo_inertial_kitti.cc)
 target_link_libraries(stereo_inertial_kitti ${PROJECT_NAME})
 
+#add_executable(mono_inertial_kitti mono_inertial_kitti.cc)
+#target_link_libraries(mono_inertial_kitti ${PROJECT_NAME})
 
-add_executable(mono_inertial_kitti mono_inertial_kitti.cc)
-target_link_libraries(mono_inertial_kitti ${PROJECT_NAME})
+#add_executable(dsp_slam dsp_slam.cc)
+#target_link_libraries(dsp_slam ${PROJECT_NAME})
 
-add_executable(dsp_slam dsp_slam.cc)
-target_link_libraries(dsp_slam ${PROJECT_NAME})
-
-add_executable(mono_snark mono_snark.cc)
-target_link_libraries(mono_snark ${PROJECT_NAME})
+#add_executable(mono_snark mono_snark.cc)
+#target_link_libraries(mono_snark ${PROJECT_NAME})
 
 #add_executable(reconstruct_frame reconstruct_frame.cpp)
 #target_link_libraries(reconstruct_frame ${PROJECT_NAME})

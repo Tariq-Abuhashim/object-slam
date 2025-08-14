@@ -162,6 +162,11 @@ public:
     py::object pyOptimizer;
     py::object pyMeshExtractor;
     int nLastReconKFID;
+    
+    inline void SetDebug(const bool flag) {
+    	std::cout << "[DEBUG]: LocalMapping debug flag has been set to TRUE\n";
+		_debug = flag;
+    }
 
 protected:
 
@@ -244,6 +249,18 @@ protected:
     std::mutex mtx_comm_init_;
     bool comm_init_ = false;
     #endif
+    
+    // object-slam
+    bool _debug;
+    bool _use_python;
+    bool _use_lidar;
+    /*
+    #ifdef NDEBUG
+    bool _debug = false;
+    #else
+    bool _debug = true;
+	#endif
+	*/
 };
 
 } //namespace ORB_SLAM

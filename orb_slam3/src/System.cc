@@ -57,9 +57,10 @@ Verbose::eLevel Verbose::th = Verbose::VERBOSITY_NORMAL;
 System::System(const string &strVocFile, const string &strSettingsFile, 
 			const eSensor sensor, const bool bUseViewer, const int initFr, 
 			const string &strSequence, const string &strLoadingFile):
-    mSensor(sensor), mpViewer(static_cast<Viewer*>(NULL)), mbReset(false), 
-    mbResetActiveMap(false), mbActivateLocalizationMode(false), 
-    mbDeactivateLocalizationMode(false), _use_python(false)
+    		mSensor(sensor), mpViewer(static_cast<Viewer*>(NULL)), mbReset(false), 
+    		mbResetActiveMap(false), mbActivateLocalizationMode(false), 
+    		mbDeactivateLocalizationMode(false), 
+    		_debug (false), _use_python(false), _use_lidar(true)
 {
     // Output welcome message
     cout << "\n";
@@ -92,6 +93,9 @@ System::System(const string &strVocFile, const string &strSettingsFile,
 	if(fsSettings["UsePython"].isInt()) {
 		 this->_use_python = (int)fsSettings["UsePython"] != 0;
 	}
+	if(fsSettings["UseLidar"].isInt()) {
+		 this->_use_lidar = (int)fsSettings["UseLidar"] != 0;
+	}
 	
 	if(this->_use_python) {
 
@@ -106,7 +110,7 @@ System::System(const string &strVocFile, const string &strSettingsFile,
 			setenv("OPEN3D_CPU_PARALLEL_POLICY", "0", 1);  // Disable TBB parallelization in Open3D
 			setenv("PYTORCH_NO_CUDA_MEMORY_CACHING", "1", 1);
 			setenv("CUDA_LAUNCH_BLOCKING", "1", 1);  // forces CUDA errors to appear synchronously
-			setenv("TORCH_USE_RTLD_GLOBAL", "1", 1);  // Helps with CUDA symbol loading
+			setenv("TORCH_USE_RTLD_GLOBAL", "0", 1);  // "1" encourages symbol sharing. "0" no sharing
 			setenv("CUDA_MODULE_LOADING", "LAZY", 1);
             //setenv("PYTHONPATH", "./Thirdparty/mmdetection3d", 1);
 
@@ -253,7 +257,7 @@ System::System(const string &strVocFile, const string &strSettingsFile,
 				//InitThread(); // Ensure proper GIL management in this function.
 
 				/* Release GIL safely */
-				//py::gil_scoped_release release; // Only release GIL if needed and safe here.
+				py::gil_scoped_release release; // Only release GIL if needed and safe here.
 			}
 			cout << "[Pybind] Python integration successful" << endl;
 		} catch (const py::error_already_set& e) {
@@ -307,7 +311,7 @@ System::System(const string &strVocFile, const string &strSettingsFile,
     								mpMapDrawer, 
     								strSettingsFile); // FIXME freezes viewer with bStepByStep
     mpMapDrawer->SetObjectDrawer(mpObjectDrawer);
-    
+
     /* Initialize the Tracking thread */
     //(it will live in the main thread of execution, the one that called this constructor)
     cout << "Seq. Name: " << strSequence << endl;
@@ -403,14 +407,31 @@ System::System(const string &strVocFile, const string &strSettingsFile,
     	mpLoopCloser->SetLocalMapper(mpLocalMapper);
     #endif
 	}
-	
+
 	// Object-SLAM (Object mapping thread is not active)
 	//cout << "[SLAM] Set pointers between threads in mpObjectMapper ..." << endl;
 	//mpObjectMapper->SetTracker(mpTracker);
-    //mpObjectMapper->SetLocalMapper(mpLocalMapper);	
-	
+    //mpObjectMapper->SetLocalMapper(mpLocalMapper);
+
+    /* Set communicator and the backend */
+    #ifdef COVINS_MOD
+    std::cout << ">>> COVINS: Initialize communicator" << std::endl;
+    comm_.reset(new Communicator(covins_params::sys::server_ip,covins_params::sys::port,mpAtlas));
+    std::cout << ">>> COVINS: Start comm thread" << std::endl;
+    thread_comm_.reset(new std::thread(&Communicator::Run,comm_));
+
+    // Get ID from back-end
+    std::cout << ">>> COVINS: wait for back-end response" << std::endl;
+    while(comm_->GetClientId() < 0){
+        usleep(1000); //wait until ID is received from server
+    }
+    std::cout << ">>> COVINS: client id: " << comm_->GetClientId() << std::endl;
+
+    // Pass to mapping
+    mpLocalMapper->SetComm(comm_);
+    #endif
+
 	/* Initialize the Viewer thread and launch */
-	
 	cout << "Starting the viewer ..." << endl;
     if(bUseViewer) {
         mpViewer = new Viewer(this, mpFrameDrawer,
@@ -425,29 +446,23 @@ System::System(const string &strVocFile, const string &strSettingsFile,
         	mpLoopCloser->mpViewer = mpViewer;
         mpViewer->both = mpFrameDrawer->both;
 	}
-	
-	/* Set communicator and the backend */
-	
-    #ifdef COVINS_MOD
-    std::cout << "Initialize communicator" << std::endl;
-    comm_.reset(new Communicator(covins_params::sys::server_ip,covins_params::sys::port,mpAtlas));
-    std::cout << "Start comm thread" << std::endl;
-    thread_comm_.reset(new std::thread(&Communicator::Run,comm_));
-    // Get ID from back-end
-    std::cout << "Wait for back-end response" << std::endl;
-    while(comm_->GetClientId() < 0){
-        usleep(1000); //wait until ID is received from server
-    }
-    std::cout << "Client id: " << comm_->GetClientId() << std::endl;
-    mpLocalMapper->SetComm(comm_); // Pass to mapping
-    #endif
-    
-     /* Set verbosity */
+
+
+    /* Set verbosity */
 	//Verbose::eLevel th = fsSettings["verbose"];
-    Verbose::SetTh(Verbose::VERBOSITY_DEBUG);  // VERBOSITY_QUIET, VERBOSITY_NORMAL, VERBOSITY_DEBUG   
+    Verbose::SetTh(Verbose::VERBOSITY_NORMAL);  // VERBOSITY_QUIET, VERBOSITY_NORMAL, VERBOSITY_DEBUG
+    
+    /* Set _debug parameters */
+    if(fsSettings["DebugPlots"].isInt()) {
+		bool _debug = (int)fsSettings["DebugPlots"] != 0;
+		mpTracker->SetDebug(_debug);
+		mpLocalMapper->SetDebug(_debug);
+		mpLoopCloser->SetDebug(_debug);
+	}
 	
 	// Object-SLAM
-	//PyEval_ReleaseThread(PyThreadState_Get());
+	if (_use_python)
+    PyEval_ReleaseThread(PyThreadState_Get());
 
 	cout << "Object-slam is alive ..." << endl;
 
@@ -819,87 +834,50 @@ void System::ResetActiveMap()
 
 void System::Shutdown()
 {
-    mpLocalMapper->RequestFinish();
-    #ifdef COVINS_MOD
-//    #ifndef NO_LOOP_FINDER
-    mpLoopCloser->RequestFinish();
-//    #endif
-    #else
-    mpLoopCloser->RequestFinish();
-    #endif
-    if(mpViewer)
-    {
-        mpViewer->RequestFinish();
-        while(!mpViewer->isFinished())
-            usleep(5000);
-    }
 
-    // Wait until all thread have effectively stopped
-    #ifdef COVINS_MOD
-//    #ifndef NO_LOOP_FINDER
-    while(!mpLocalMapper->isFinished() || !mpLoopCloser->isFinished() || mpLoopCloser->isRunningGBA())
-    #else
-//    while(!mpLocalMapper->isFinished())
-//    #endif
-//    #else
-    while(!mpLocalMapper->isFinished() || !mpLoopCloser->isFinished() || mpLoopCloser->isRunningGBA())
-    #endif
-    {
-        if(!mpLocalMapper->isFinished())
-            cout << "mpLocalMapper is not finished" << endl;
-        #ifdef COVINS_MOD
-//        #ifndef NO_LOOP_FINDER
-        if(!mpLoopCloser->isFinished())
-            cout << "mpLoopCloser is not finished" << endl;
-        if(mpLoopCloser->isRunningGBA()){
-            cout << "mpLoopCloser is running GBA" << endl;
-            cout << "break anyway..." << endl;
-            break;
-        }
-//        #endif
-        #else
-        if(!mpLoopCloser->isFinished())
-            cout << "mpLoopCloser is not finished" << endl;
-        if(mpLoopCloser->isRunningGBA()){
-            cout << "mpLoopCloser is running GBA" << endl;
-            cout << "break anyway..." << endl;
-            break;
-        }
-        #endif
-        usleep(5000);
-    }
+    std::cout << "[Shutdown] Initiating system shutdown..." << std::endl;
+    
+    /* viewer */
+	if (mpViewer) {
+		mpViewer->RequestFinish();  // Set a flag that viewer loop checks
+	}
 
+	if (mptViewer && mptViewer->joinable()) {
+		mptViewer->join();  // Wait for the viewer thread to exit cleanly
+	}
+	
+	/* local mapping */
+	if (mpLocalMapper) {
+		mpLocalMapper->RequestFinish();
+	}
+	if (mptLocalMapping && mptLocalMapping->joinable()) {
+		mptLocalMapping->join();
+	}
+
+	/* loop closing */
+	#if (defined(COVINS_MOD) && !defined(NO_LOOP_FINDER)) || !defined(COVINS_MOD)
+	if (mpLoopCloser) {
+		mpLoopCloser->RequestFinish();
+	}
+	if (mptLoopClosing && mptLoopClosing->joinable()) {
+		mptLoopClosing->join();
+	}
+	#endif
+	
+    /* comms */
     #ifdef COVINS_MOD
-    comm_->SetFinish();
-    while(!comm_->IsFinished()) {
-        cout << "comm_ is not finished" << endl;
-        usleep(5000);
+    if(thread_comm_ && thread_comm_->joinable()) {
+        thread_comm_->join();
     }
     #endif
-
-    #ifdef COVINS_MOD
-    std::cout << "Joining Threads" << std::endl;
-    std::cout << "--> Join Mapping Thread" << std::endl;
-    mptLocalMapping->join();
-    std::cout << "--> Join LC Thread" << std::endl;
-    mptLoopClosing->join();
-    std::cout << "--> Join Comm Thread" << std::endl;
-    thread_comm_->join();
-    if(mpViewer) {
-        std::cout << "--> Join Viewer Thread" << std::endl;
-        mptViewer->join();
-    }
-    std::cout << "Done" << std::endl;
-    #endif
-
-    if(mpViewer)
-        pangolin::BindToContext("ORB-SLAM2: Map Viewer");
-
-#ifdef REGISTER_TIMES
+    
+    /* print summary */
+    #ifdef REGISTER_TIMES
     mpTracker->PrintTimeStats();
-#endif
-}
+    #endif
 
+    std::cout << "SLAM system shutdown complete." << std::endl;
+}
 
 
 void System::SaveTrajectoryTUM(const string &filename)

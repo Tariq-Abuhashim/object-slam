@@ -91,6 +91,11 @@ public:
 	bool ComputeSim3();
     // This function will run in a separate thread
     void RunGlobalJointBundleAdjustment(unsigned long nLoopKF);
+    
+    inline void SetDebug(const bool flag) {
+    	std::cout << "[DEBUG]: LoopClosing debug flag has been set to TRUE\n";
+		_debug = flag;
+    }
 
 #ifdef REGISTER_TIMES
 
@@ -243,6 +248,11 @@ protected:
     string mstrFolderSubTraj;
     int mnNumCorrection;
     int mnCorrectionGBA;
+    
+    // object-slam
+    bool _debug;
+    bool _use_python;
+    bool _use_lidar;
 
 
     // To (de)activate LC

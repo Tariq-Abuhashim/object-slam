@@ -248,7 +248,17 @@ public:
     py::object pyCfg;
     py::object pyDecoder;
     py::object pySequence;
-    bool _use_python;
+    
+    bool _debug;
+	bool _use_lidar;
+	bool _use_python;
+    /*
+    #ifdef NDEBUG
+    bool _debug = false;
+    #else
+    bool _debug = true;
+	#endif
+	*/
 
 	/* Communications */
 	boost::asio::ip::tcp::socket* socket_;
@@ -351,6 +361,7 @@ private:
     void check_mmdet();
     void check_mmdet3d();
 	void check_detectors();
+	
 };
 
 }// namespace ORB_SLAM

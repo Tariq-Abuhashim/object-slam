@@ -9,11 +9,20 @@ from mmdet.models import build_detector
 from mmdet.core import get_classes
 from mmdet.apis import inference_detector
 
+# Configure logging for the module
+import logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d (%(funcName)s) - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
 #object_class_table = {"cars": [2], "chairs": [56, 57]}
 object_class_table = {"Person": [0], "cars": [2], "Motorcycle": [3], "Bus": [5], "Truck": [7], "chairs": [56, 57]}
 
 def get_detector2d(configs):
-    print('Setting detector2D')
+    logger.debug('Setting detector2D')
     return Detector2D(configs)
 
 class Detector2D(object):
@@ -62,7 +71,7 @@ class Detector2D(object):
             # Skip if no boxes were found for this class
             if len(class_boxes) > 0 and len(class_boxes[0]) > 0:
                 #for bbox, label in zip(class_boxes, class_labels):
-                #    print(f"Box: {bbox}, Label: {label}")
+                #    logger.debug(f"Box: {bbox}, Label: {label}")
                 # Transform list of arrays to a single array (NumPy array)
                 class_boxes = np.concatenate(class_boxes, axis=0)
                 class_labels = class_labels * len(class_boxes)
@@ -84,9 +93,9 @@ class Detector2D(object):
                 class_masks = np.stack(class_masks, axis=0)
                 masks.append(class_masks)
         
-            #print("Labels: ", class_labels)
-            #print("Boxes shape: ", class_boxes.shape)
-            #print("Masks shape: ", class_masks.shape)
+            #logger.debug("Labels: ", class_labels)
+            #logger.debug("Boxes shape: ", class_boxes.shape)
+            #logger.debug("Masks shape: ", class_masks.shape)
             assert class_boxes.shape[0] == class_masks.shape[0], "Number of boxes and masks do not match"
             assert class_boxes.shape[0] == len(class_labels), "Number of boxes and labels do not match"
 
